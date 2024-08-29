@@ -1,0 +1,11 @@
+850: rfc850: Standard for interchange of USENET messages
+977: rfc977: Network News Transfer Protocol
+1849: rfc1849: "Son of 1036": News Article Format and Transmission
+2980: rfc2980: Common NNTP Extensions
+3977: rfc3977: Network News Transfer Protocol (NNTP)
+4643: rfc4643: Network News Transfer Protocol (NNTP) Extension for Authentication
+4644: rfc4644: Network News Transfer Protocol (NNTP) Extension for Streaming Feeds
+5536: rfc5536: Netnews Article Format
+5537: rfc5537: Netnews Architecture and Protocols
+6048: rfc6048: Network News Transfer Protocol (NNTP) Additions to LIST Command
+8315: rfc8315: Cancel-Locks in Netnews Articles
