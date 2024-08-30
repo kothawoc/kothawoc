@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 
+	nntpclient "github.com/kothawoc/go-nntp/client"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/messages"
 )
@@ -42,6 +44,7 @@ type Peer struct {
 	TorId     string
 	PubKey    string
 	Name      string
+	Client    *nntpclient.Client
 	ParentCmd chan PeeringMessage
 	Cmd       chan PeeringMessage
 }
@@ -54,18 +57,6 @@ func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, torId string, db *
 		Cmd:       make(chan PeeringMessage, 10),
 	}
 	go Peer.Worker()
-	/*
-		go func() {
-			//	var conn net.Conn
-
-			conn.Write([]byte("ping"))
-			var buf []byte = make([]byte, 1024)
-			n, _ := conn.Read(buf)
-			fmt.Printf("Got reply from server: [%s]\n", buf[:n])
-
-			conn.Close()
-		}()
-	*/
 
 	return Peer, nil
 }
@@ -79,7 +70,9 @@ func (p *Peer) Worker() {
 				p.Connect()
 
 			case CmdDistribute:
-				//			msg := cmd.Args[0].(messages.MessageTool)
+				msg := cmd.Args[0].(messages.MessageTool)
+				// TODO: filter mail to see if we should actually post it?
+				p.Client.Post(strings.NewReader(msg.RawMail()))
 
 			case CmdExit:
 				p.Conn.Close()
@@ -124,6 +117,10 @@ func (p *Peer) Connect() {
 		return
 		//return nil, errors.New("Failed hanshake, signature didn't match.")
 	}
+
+	c, _ := nntpclient.NewConn(conn)
+	p.Client = c
+
 	p.Conn = conn
 }
 
@@ -145,10 +142,10 @@ func NewPeers(db *sql.DB, tc *torutils.TorCon) (*Peers, error) {
 	}
 
 	/*
-		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-		torid TEXT NOT NULL UNIQUE,
-		pubkey TEXT NOT NULL UNIQUE,
-		name TEXT NOT NULL
+	   id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	   torid TEXT NOT NULL UNIQUE,
+	   pubkey TEXT NOT NULL UNIQUE,
+	   name TEXT NOT NULL
 	*/
 
 	go Peers.Worker()

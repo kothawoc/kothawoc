@@ -116,6 +116,18 @@ func (c *Client) AddPeer(torId string) error {
 	return c.NNTPclient.Post(strings.NewReader(mail))
 }
 
+// func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, name string) (string, error) {
+func (c *Client) Post(mail *messages.MessageTool) error {
+	mail.Article.Header.Set("Message-id", idGen.GenID())
+	signedMail, err := mail.Sign(c.deviceKey)
+	log.Printf("New peering mail err[%v]:=====================\n%s\n===================\n", err, mail)
+	if err != nil {
+		return err
+	}
+
+	return c.NNTPclient.Post(strings.NewReader(signedMail))
+}
+
 func (c *Client) Dial() {
 	serverConn, clientConn := net.Pipe()
 

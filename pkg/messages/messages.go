@@ -283,7 +283,8 @@ func (m *MessageTool) ParseBody() {
 func NewMessageTool() *MessageTool {
 	return &MessageTool{
 		Article: &nntp.Article{
-			Header: textproto.MIMEHeader{},
+			Header: textproto.MIMEHeader{
+				"Date": {time.Now().UTC().Format(time.RFC1123Z)}},
 		},
 		Preamble: "",
 		Parts:    []MimePart{},
