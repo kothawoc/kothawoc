@@ -14,8 +14,8 @@
 - [x] Control message;- sending.
 - [x] Control message;- receiving and processing.
 - [x] Control message;- Create group.
-- [ ] Control message;- Add peer.
-- [ ] Peering.
+- [x] Control message;- Add peer.
+- [\] Peering.
 
 ## Stage 2
 
