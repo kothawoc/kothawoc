@@ -60,6 +60,7 @@ type ControMesasgeFunctions struct {
 // func CheckControl(msg *messages.MessageTool, newGroup func(name, description, flags string) error) bool {
 func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) bool {
 
+	log.Printf("CHECK CONTROL MESSAGE: [%s]", msg)
 	if ctrl := msg.Article.Header.Get("Control"); ctrl != "" {
 		splitCtl := strings.Split(ctrl, " ")
 		switch splitCtl[0] {
@@ -114,6 +115,8 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) bool {
 
 		case "RemovePeer":
 		case "SetPerms":
+		default:
+			log.Printf("ERROR CONTROL MESSAGE: [%s]", msg)
 		}
 	}
 

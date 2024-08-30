@@ -101,7 +101,7 @@ func (p *Peer) Worker() {
 func (p *Peer) Connect() {
 
 	fmt.Printf("CLIENT Dialing\n")
-	conn, err := p.Tc.Dial("tcp", p.TorId+":80")
+	conn, err := p.Tc.Dial("tcp", p.TorId+".onion:80")
 	//defer conn.Close()
 
 	fmt.Printf("CLIENT Dialing response [%v][%v]\n", conn, err)
@@ -190,6 +190,18 @@ func (p *Peers) Worker() {
 				for _, peer := range p.Conns {
 					peer.Cmd <- cmd
 				}
+
+			case CmdAddPeer:
+				var id int
+				var pubkey, name string
+				torid := cmd.Args[0].(string)
+
+				log.Printf("Adding peer [%d][%s][%s][%s]", id, torid, pubkey, name)
+				conn, _ := NewPeer(p.Tc, p.Cmd, torid, p.Db)
+				p.Conns[torid] = conn
+				cmd.Cmd = CmdConnect
+				p.Conns[torid].Cmd <- cmd
+
 			}
 		case <-p.Exit:
 			return

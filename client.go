@@ -105,6 +105,17 @@ func (c *Client) CreateNewGroup(name, description string, posting nntp.PostingSt
 	return c.NNTPclient.Post(strings.NewReader(mail))
 }
 
+// func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, name string) (string, error) {
+func (c *Client) AddPeer(torId string) error {
+	mail, err := messages.CreatePeeringMail(c.deviceKey, idGen, torId)
+	log.Printf("New peering mail err[%v]:=====================\n%s\n===================\n", err, mail)
+	if err != nil {
+		return err
+	}
+
+	return c.NNTPclient.Post(strings.NewReader(mail))
+}
+
 func (c *Client) Dial() {
 	serverConn, clientConn := net.Pipe()
 
