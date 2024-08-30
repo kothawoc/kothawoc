@@ -54,6 +54,7 @@ Allbery & Lindsey           Standards Track                    [Page 37] - [Page
 
 type ControMesasgeFunctions struct {
 	NewGroup func(name, description, flags string) error
+	AddPeer  func(name string) error
 }
 
 // func CheckControl(msg *messages.MessageTool, newGroup func(name, description, flags string) error) bool {
@@ -109,6 +110,8 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) bool {
 		case "Subscribe":
 		case "UnSubscribe":
 		case "AddPeer":
+			cmf.AddPeer(splitCtl[1])
+
 		case "RemovePeer":
 		case "SetPerms":
 		}
@@ -154,6 +157,7 @@ func CreateNewsGroupMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, n
 				"Control":                   {"newsgroup " + ownerID + "." + name + modStr},
 				"Message-Id":                {idgen.GenID()},
 				"Date":                      {time.Now().UTC().Format(time.RFC1123Z)},
+				"Newsgroups":                {ownerID + "." + name},
 				"Content-Type":              {"multipart/mixed; boundary=\"nxtprt\""},
 				"Content-Transfer-Encoding": {"8bit"},
 			},
@@ -167,6 +171,39 @@ func CreateNewsGroupMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, n
 			{
 				Header:  textproto.MIMEHeader{"Content-Type": []string{"text/plain;charset=UTF-8"}},
 				Content: []byte("This is a system control message to create the newsgroup " + ownerID + "." + name + ".\r\n"),
+			},
+		},
+	}).Sign(key)
+}
+
+func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, name string) (string, error) {
+
+	// Subject: cmsg newgroup example.admin.info moderated
+	// Control: newgroup example.admin.info moderated
+
+	ownerID := torutils.EncodePublicKey(key.PublicKey())
+
+	return (&MessageTool{
+		Article: &nntp.Article{
+			Header: textproto.MIMEHeader{
+				"Subject":                   {"AddPeer " + name},
+				"Control":                   {"AddPeer " + name},
+				"Message-Id":                {idgen.GenID()},
+				"Date":                      {time.Now().UTC().Format(time.RFC1123Z)},
+				"Newsgroups":                {ownerID + ".peers"},
+				"Content-Type":              {"multipart/mixed; boundary=\"nxtprt\""},
+				"Content-Transfer-Encoding": {"8bit"},
+			},
+		},
+		Preamble: "This is a MIME control message.",
+		Parts: []MimePart{
+			{
+				Header:  textproto.MIMEHeader{"Content-Type": []string{"application/news-groupinfo;charset=UTF-8"}},
+				Content: []byte("For your newsgroups file:\r\nAddPeer " + name),
+			},
+			{
+				Header:  textproto.MIMEHeader{"Content-Type": []string{"text/plain;charset=UTF-8"}},
+				Content: []byte("This is a system control message to add the peer " + name + ".\r\n"),
 			},
 		},
 	}).Sign(key)

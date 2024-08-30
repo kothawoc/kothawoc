@@ -23,7 +23,7 @@ func main() {
 
 	c := client.NewClient(os.Getenv("PWD") + "/data")
 
-	c.Dial()
+	//c.Dial()
 	/*
 		// Post an article
 		err := c.NNTPclient.Post(strings.NewReader(fmt.Sprintf(examplepost, time.Now().UTC().Format(time.RFC1123Z))))

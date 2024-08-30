@@ -200,7 +200,7 @@ func secondmain() {
 
 */
 
-func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, authCallback func(clientId string) bool) (bool, error) {
+func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, authCallback func(clientPubKey ed25519.PublicKey) bool) (bool, error) {
 	// construct initial handshake
 
 	// get initial client request
@@ -215,12 +215,15 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 	}
 	clientPubKey, _ := hex.DecodeString(string(splitRequest[0]))
 	//fmt.Printf("SERVER PUBKEYRECV: size[%d], hex[%s] decoded[%v]\n", len(splitRequest[0]), splitRequest[0], clientPubKey)
-	clientTorId, _ := hex.DecodeString(string(splitRequest[1]))
+	clientTorId := string(splitRequest[1])
+	if clientTorId != EncodePublicKey(clientPubKey) {
+		return false, fmt.Errorf("Error: client TorId and pubkey don't match.")
+	}
 	// randomData, _ := hex.DecodeString(string(splitRequest[2]))
 	clientSig, _ := hex.DecodeString(string(splitRequest[3]))
 	clientMesg := strings.Join(splitRequest[:3], " ")
 	// check that the claimed client tor id matches the public key
-	if authCallback(string(clientTorId)) == false {
+	if authCallback(clientPubKey) == false {
 		log.Printf("SERVER HANDSHAKE AUTH CALLBACK FAILED [%s]\n", clientMesg)
 		return false, fmt.Errorf("Error: client TorId refused by callback.")
 	}

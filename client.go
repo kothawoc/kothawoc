@@ -30,14 +30,17 @@ type Client struct {
 	deviceKey  ed25519.PrivateKey
 	deviceId   string
 	ConfigPath string
+	Tor        *torutils.TorCon
 }
 
 func NewClient(path string) *Client {
 
-	nntpBackend, _ := nntpbackend.NewNNTPBackend(path)
+	tc := torutils.NewTorCon(path + "/data")
+	nntpBackend, _ := nntpbackend.NewNNTPBackend(path, tc)
 
 	client := &Client{
 		ConfigPath: path,
+		Tor:        tc,
 		be:         nntpBackend.NextBackend.(*nntpbackend.NntpBackend),
 	}
 
@@ -64,6 +67,10 @@ func NewClient(path string) *Client {
 	client.Server = s
 
 	go client.tcpServer(s)
+	go client.torServer(tc, s)
+
+	client.Dial()
+	client.CreateNewGroup("peers", "Control group for peering messages.", nntp.PostingPermitted)
 
 	return client
 }
@@ -162,4 +169,54 @@ func (c *Client) tcpServer(s *nntpserver.Server) {
 		log.Printf("clid stuff [%#v][%#v]", c.deviceId, idGen)
 		go s.Process(conn, clientSession)
 	}
+}
+
+func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
+	onion, _ := tc.Listen(80, 9980, ed25519.PrivateKey(torutils.GetPrivateKey()))
+
+	fmt.Printf("SERVER Listening: [%v]\n", onion)
+	//defer listenCancel()
+	for {
+		conn, err := onion.Accept()
+		fmt.Printf("SERVER Accept: [%v]\n", onion)
+		if err != nil {
+			fmt.Printf("SERVER ERROR Accept: [%v] [%v]\n", onion, err)
+			continue
+		}
+		go func() {
+			defer conn.Close()
+
+			var clientPubKey ed25519.PublicKey
+			authCallback := func(key ed25519.PublicKey) bool {
+				clientPubKey = key
+				// if clientPubKey == getPeer {
+				// return true
+				// }
+				clientPubKey = key
+				return false
+			}
+
+			authed, err := tc.ServerHandshake(conn, ed25519.PrivateKey(torutils.GetPrivateKey()), authCallback)
+			fmt.Printf("SERVER AUTHed: [%v] [%v]\n", authed, err)
+			if err != nil {
+				return
+			}
+			if authed == false {
+				conn.Close()
+				return
+			}
+
+			clientSession := nntpserver.ClientSession{
+				"Id":       torutils.EncodePublicKey(clientPubKey),
+				"PubKey":   string(fmt.Sprintf("%x", clientPubKey)),
+				"ConnMode": nntpbackend.ConnModeTor,
+			}
+
+			log.Printf("tor connection stuff [%#v][%#v]", c.deviceId, idGen)
+			s.Process(conn, clientSession)
+			log.Printf("tor disconnection stuff [%#v][%#v]", c.deviceId, idGen)
+
+		}()
+	}
+
 }

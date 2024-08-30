@@ -10,7 +10,7 @@ import (
 	"github.com/kothawoc/kothawoc/internal/torutils"
 )
 
-func authCB(s string) bool {
+func authCB(s ed25519.PublicKey) bool {
 	return true
 }
 

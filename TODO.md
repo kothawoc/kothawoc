@@ -23,7 +23,7 @@
 - [ ] Support Distribution header (and require it for security).
 - [ ] Support Expires header (and require it for control messages).
 - [ ] Support Supersedes header.
-- [ ] Control message;- Subscript to peer's group.
+- [ ] Control message;- Subscribe to peer's group.
 - [ ] Control message;- Cancel /delete message.
 - [ ] Control message;- Add group identity/vcard.
 - [ ] Control message;- Delete group.

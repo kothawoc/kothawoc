@@ -12,16 +12,17 @@ import (
 )
 
 type backendDbs struct {
-	path                              string
-	articles, config, groups, friends *sql.DB
-	groupArticles                     map[string]*sql.DB
-	groupArticlesName2Int             map[string]int64
-	groupArticlesName2Hex             map[string]string
+	path                            string
+	articles, config, groups, peers *sql.DB
+	groupArticles                   map[string]*sql.DB
+	groupArticlesName2Int           map[string]int64
+	groupArticlesName2Hex           map[string]string
 }
 
-const createFriendsDB string = `
-CREATE TABLE IF NOT EXISTS friends (
+const createPeersDB string = `
+CREATE TABLE IF NOT EXISTS peers (
 	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	torid TEXT NOT NULL UNIQUE,
 	pubkey TEXT NOT NULL UNIQUE,
 	name TEXT NOT NULL
 	);
@@ -110,11 +111,11 @@ func NewBackendDBs(path string) (*backendDbs, error) {
 	}
 	dbs.groups = db
 
-	db, err = openCreateDB(path+"/friends.db", createFriendsDB)
+	db, err = openCreateDB(path+"/peers.db", createPeersDB)
 	if err != nil {
 		return nil, err
 	}
-	dbs.friends = db
+	dbs.peers = db
 
 	dbs.groupArticles = map[string]*sql.DB{}
 	dbs.groupArticlesName2Int = map[string]int64{}

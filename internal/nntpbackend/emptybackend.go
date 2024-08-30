@@ -5,6 +5,7 @@ import (
 
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
+	"github.com/kothawoc/kothawoc/internal/peering"
 )
 
 /*
@@ -31,6 +32,7 @@ import (
 */
 type EmptyNntpBackend struct {
 	ConfigPath  string
+	Peers       *peering.Peers
 	DBs         *backendDbs
 	NextBackend nntpserver.Backend
 }

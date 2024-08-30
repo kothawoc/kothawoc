@@ -17,6 +17,8 @@ import (
 
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
+	"github.com/kothawoc/kothawoc/internal/peering"
+	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/messages"
 )
 
@@ -49,7 +51,7 @@ const (
 	}
 */
 
-func NewNNTPBackend(path string) (*EmptyNntpBackend, error) {
+func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error) {
 
 	os.MkdirAll(fmt.Sprintf("%s/articles", path), 0700)
 	dbs, _ := NewBackendDBs(path)
@@ -58,13 +60,22 @@ func NewNNTPBackend(path string) (*EmptyNntpBackend, error) {
 	dbs.NewGroup("misc.test", "Alt misc test group", "y")
 	dbs.NewGroup("alt.test", "Alt misc test group", "y")
 
+	//	np := NewPeers()
+	//	cmf := messages.ControMesasgeFunctions{
+	//		NewGroup: be.DBs.NewGroup,
+	//		AddPeer:  np.AddPeer,
+
+	peers, _ := peering.NewPeers(dbs.peers, tc)
+
 	nextBackend := &NntpBackend{
 		ConfigPath: path,
+		Peers:      peers,
 		DBs:        dbs,
 	}
 
 	return &EmptyNntpBackend{
 		ConfigPath:  path,
+		Peers:       peers,
 		DBs:         dbs,
 		NextBackend: nextBackend,
 	}, nil
@@ -73,6 +84,7 @@ func NewNNTPBackend(path string) (*EmptyNntpBackend, error) {
 
 type NntpBackend struct {
 	ConfigPath string
+	Peers      *peering.Peers
 	DBs        *backendDbs
 }
 
@@ -317,8 +329,10 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		log.Printf("Error Posting, failed to verify message")
 		return nntpserver.ErrPostingNotPermitted
 	}
+	//np, _ := NewPeers(be.DBs.peers,be.)
 	cmf := messages.ControMesasgeFunctions{
 		NewGroup: be.DBs.NewGroup,
+		AddPeer:  be.Peers.AddPeer,
 	}
 
 	if res := messages.CheckControl(msg, cmf); res == true {
@@ -394,6 +408,8 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 			log.Printf("Error writing file Ouch def Error insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id"))
 			return err
 		}
+
+		be.Peers.DistributeArticle(*msg)
 
 		for group, groupId := range postableGroups {
 			insert := "INSERT INTO articles(id,messageid) VALUES(?,?);"

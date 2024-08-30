@@ -13,6 +13,7 @@ import (
 	nntpserver "github.com/kothawoc/go-nntp/server"
 
 	"github.com/kothawoc/kothawoc/internal/nntpbackend"
+	"github.com/kothawoc/kothawoc/internal/torutils"
 )
 
 // see https://github.com/maxymania/go-nntp/tree/master/server
@@ -41,8 +42,9 @@ func main() {
 	l, err := net.ListenTCP("tcp", a)
 	log.Printf("Error setting up listener: %v", err)
 	defer l.Close()
+	tc := &torutils.TorCon{}
 
-	nntpBackend, _ := nntpbackend.NewNNTPBackend("./data")
+	nntpBackend, _ := nntpbackend.NewNNTPBackend("./data", tc)
 
 	s := nntpserver.NewServer(nntpBackend, idGen)
 
