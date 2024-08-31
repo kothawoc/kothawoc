@@ -19,11 +19,13 @@ type backendDbs struct {
 	groupArticlesName2Hex           map[string]string
 }
 
+// the pubkey isn't known until after the first handshake, but we still
+// want to insert the record.
 const createPeersDB string = `
 CREATE TABLE IF NOT EXISTS peers (
 	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 	torid TEXT NOT NULL UNIQUE,
-	pubkey TEXT NOT NULL UNIQUE,
+	pubkey TEXT NOT NULL,
 	name TEXT NOT NULL
 	);
 `

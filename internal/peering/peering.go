@@ -26,11 +26,12 @@ CREATE TABLE IF NOT EXISTS peers (
 type PeeringCommand string
 
 const (
-	CmdConnect    = PeeringCommand("Connect")
-	CmdAddPeer    = PeeringCommand("AddPeer")
-	CmdRemovePeer = PeeringCommand("RemovePeer")
-	CmdDistribute = PeeringCommand("Distribute")
-	CmdExit       = PeeringCommand("Exit")
+	CmdConnect      = PeeringCommand("Connect")
+	CmdAddPeer      = PeeringCommand("AddPeer")
+	CmdRemovePeer   = PeeringCommand("RemovePeer")
+	CmdDistribute   = PeeringCommand("Distribute")
+	CmdExit         = PeeringCommand("Exit")
+	CmdWorkerExited = PeeringCommand("WorkerExited")
 )
 
 type PeeringMessage struct {
@@ -84,6 +85,10 @@ func (p *Peer) Worker() {
 				}
 
 			case CmdExit:
+				p.ParentCmd <- PeeringMessage{
+					Cmd:  CmdWorkerExited,
+					Args: []interface{}{p.TorId},
+				}
 				p.Conn.Close()
 				return
 			}
@@ -206,7 +211,7 @@ func (p *Peers) Worker() {
 				row := p.Db.QueryRow("SELECT id,torid,pubkey,name FROM peers WHERE torid=?;", torid)
 				err := row.Scan(&id, &torid, &pubkey, &name)
 				log.Printf("ADDING PEER: [%s][%x] [%v]", torid, id, err)
-				if err != nil {
+				if err != sql.ErrNoRows {
 					errChan <- fmt.Errorf("Peer already exists [%s]", torid)
 					continue
 				}
@@ -265,4 +270,13 @@ func (p *Peers) DistributeArticle(msg messages.MessageTool) error {
 	}
 
 	return nil
+}
+
+func (p *Peers) Connect() error {
+	err := make(chan error)
+	p.Cmd <- PeeringMessage{
+		Cmd: CmdConnect,
+	}
+
+	return <-err
 }

@@ -65,7 +65,11 @@ func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error)
 	//		NewGroup: be.DBs.NewGroup,
 	//		AddPeer:  np.AddPeer,
 
-	peers, _ := peering.NewPeers(dbs.peers, tc)
+	peers, err := peering.NewPeers(dbs.peers, tc)
+	if err != nil {
+		return nil, err
+	}
+	go peers.Connect()
 
 	nextBackend := &NntpBackend{
 		ConfigPath: path,
@@ -340,6 +344,8 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		log.Printf("ERROR POST Control message failed[%#v]", err)
 		return nntpserver.ErrPostingFailed
 	}
+
+	log.Printf("SUCCESS POST Control message.")
 
 	//	if ctrl := msg.Article.Header.Get("Control"); ctrl != "" {
 	//		checkControl(msg)
