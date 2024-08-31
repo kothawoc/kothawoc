@@ -58,7 +58,7 @@ type ControMesasgeFunctions struct {
 }
 
 // func CheckControl(msg *messages.MessageTool, newGroup func(name, description, flags string) error) bool {
-func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) bool {
+func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 
 	log.Printf("CHECK CONTROL MESSAGE: [%s]", msg)
 	if ctrl := msg.Article.Header.Get("Control"); ctrl != "" {
@@ -100,7 +100,8 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) bool {
 				}
 				//	description := strings.Join(splitCtl[2:len(splitCtl)-1], "\n")[1]
 				//be.DBs.NewGroup(splitCtl[1], description, splitCtl[len(splitCtl)])
-				cmf.NewGroup(splitCtl[1], description, flags)
+				return cmf.NewGroup(splitCtl[1], description, flags)
+
 			}
 			//dbs.NewGroup("alt.misc.test", "Alt misc test group", "y")
 			//dbs.NewGroup("misc.test", "Alt misc test group", "y")
@@ -111,7 +112,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) bool {
 		case "Subscribe":
 		case "UnSubscribe":
 		case "AddPeer":
-			cmf.AddPeer(splitCtl[1])
+			return cmf.AddPeer(splitCtl[1])
 
 		case "RemovePeer":
 		case "SetPerms":
@@ -120,7 +121,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) bool {
 		}
 	}
 
-	return false
+	return nil
 }
 
 /*

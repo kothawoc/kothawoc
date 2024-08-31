@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	//"github.com/cretz/bine/process/embedded/tor-0.4.7"
 	"github.com/cretz/bine/tor"
 	"github.com/cretz/bine/torutil/ed25519"
 )
@@ -18,7 +19,6 @@ func randomHexString(n int) string {
 	rMesg := make([]byte, n)
 	rand.Read(rMesg)
 	//binary.LittleEndian.
-
 	return hex.EncodeToString(rMesg)
 }
 
@@ -65,7 +65,7 @@ type TorCon struct {
 
 // WARNING TODO: make sure pubkey lengths are correct or it will panic,
 // WARNING TODO: verify public keys match tor id hash.
-func (t *TorCon) ClientHandshake(conn net.Conn, privateKey ed25519.PrivateKey, remoteAddr string) (bool, error) {
+func (t *TorCon) ClientHandshake(conn net.Conn, privateKey ed25519.PrivateKey, remoteAddr string) (ed25519.PublicKey, error) {
 	// construct initial handshake
 	hexPublicKey := hex.EncodeToString([]byte(privateKey.PublicKey()))
 	//log.Printf("Client public key: size[%d] content[%s]", len([]byte(ed25519.PublicKey(privateKey))), []byte(ed25519.PublicKey(privateKey)))
@@ -78,7 +78,7 @@ func (t *TorCon) ClientHandshake(conn net.Conn, privateKey ed25519.PrivateKey, r
 	// get response
 	response, err := readConnUntilLF(conn)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	splitResponse := strings.Split(response, " ")
 	serverPubKey, _ := hex.DecodeString(string(splitResponse[0]))
@@ -90,7 +90,7 @@ func (t *TorCon) ClientHandshake(conn net.Conn, privateKey ed25519.PrivateKey, r
 	verified := ed25519.Verify(serverPubKey, []byte(serverMesg), serverSig)
 	//log.Printf("CLIENT HANDSHAKE VERIFY RESPONSE [%v] RESPONSE: [%s]\n", verified, response)
 	if verified == false {
-		return false, fmt.Errorf("Error: faied to verify server cert.")
+		return nil, fmt.Errorf("Error: faied to verify server cert.")
 	}
 
 	// sign server message so they can trust you.
@@ -102,9 +102,9 @@ func (t *TorCon) ClientHandshake(conn net.Conn, privateKey ed25519.PrivateKey, r
 	response, err = readConnUntilLF(conn)
 	//log.Printf("CLIENT HANDSHAKE OK/FAIL from server: [%s]\n", response)
 	if response == "OK" {
-		return true, nil
+		return serverPubKey, nil
 	}
-	return false, fmt.Errorf("Error: server refused connection.")
+	return nil, fmt.Errorf("Error: server refused connection.")
 }
 
 const (
@@ -114,6 +114,9 @@ const (
 )
 
 /*
+
+https://github.com/akamensky/golang-upgrade-tcp-to-tls/blob/master/client.go
+
 func generatePrivateKey() (*ecdsa.PrivateKey, error) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -200,24 +203,24 @@ func secondmain() {
 
 */
 
-func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, authCallback func(clientPubKey ed25519.PublicKey) bool) (bool, error) {
+func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, authCallback func(clientPubKey ed25519.PublicKey) bool) (ed25519.PublicKey, error) {
 	// construct initial handshake
 
 	// get initial client request
 	clientRequest, err := readConnUntilLF(conn)
 	//log.Printf("SERVER HANDSHAKE RECEIVED FROM CLIENT: [%s]\n", clientRequest)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	splitRequest := strings.Split(clientRequest, " ")
 	if len(splitRequest) != 4 {
-		return false, fmt.Errorf("Error, handshake has wrong number of arguments.")
+		return nil, fmt.Errorf("Error, handshake has wrong number of arguments.")
 	}
 	clientPubKey, _ := hex.DecodeString(string(splitRequest[0]))
 	//fmt.Printf("SERVER PUBKEYRECV: size[%d], hex[%s] decoded[%v]\n", len(splitRequest[0]), splitRequest[0], clientPubKey)
 	clientTorId := string(splitRequest[1])
 	if clientTorId != EncodePublicKey(clientPubKey) {
-		return false, fmt.Errorf("Error: client TorId and pubkey don't match.")
+		return nil, fmt.Errorf("Error: client TorId and pubkey don't match.")
 	}
 	// randomData, _ := hex.DecodeString(string(splitRequest[2]))
 	clientSig, _ := hex.DecodeString(string(splitRequest[3]))
@@ -225,12 +228,12 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 	// check that the claimed client tor id matches the public key
 	if authCallback(clientPubKey) == false {
 		log.Printf("SERVER HANDSHAKE AUTH CALLBACK FAILED [%s]\n", clientMesg)
-		return false, fmt.Errorf("Error: client TorId refused by callback.")
+		return nil, fmt.Errorf("Error: client TorId refused by callback.")
 	}
 	verified := ed25519.Verify(ed25519.PublicKey(clientPubKey), []byte(clientMesg), clientSig)
 	if verified == false {
 		log.Printf("SERVER HANDSHAKE AUTH SIGNATURE FAILED [%s]\n", clientMesg)
-		return false, fmt.Errorf("Error: failed to verify client cert.")
+		return nil, fmt.Errorf("Error: failed to verify client cert.")
 	}
 
 	// send response to client
@@ -249,15 +252,16 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 	clientRequest, err = readConnUntilLF(conn)
 	//log.Printf("SERVER HANDSHAKE RESPONSE FROM CLIENT: [%s]\n", clientRequest)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	clientSig, _ = hex.DecodeString(clientRequest)
 	verified = ed25519.Verify(clientPubKey, []byte(initialHandshake[:len(initialHandshake)-1]), clientSig)
-	if verified == false {
-		return false, fmt.Errorf("Error: faied to verify server cert.")
+	if verified {
+		conn.Write([]byte("OK\n"))
+		log.Printf("Error: faied to verify server cert.")
+		return clientPubKey, nil
 	}
-	conn.Write([]byte("OK\n"))
-	return true, nil
+	return nil, fmt.Errorf("Error: failed to verify server cert.")
 }
 
 func (t *TorCon) Listen(torPort, localPort int, privateKey ed25519.PrivateKey) (*tor.OnionService, error) {
@@ -267,6 +271,7 @@ func (t *TorCon) Listen(torPort, localPort int, privateKey ed25519.PrivateKey) (
 	// Create an onion service to listen on 8080 but show as 80
 	// localKey := getPrivateKey()
 	onion, err := t.t.Listen(listenCtx, &tor.ListenConf{Version3: true, LocalPort: localPort, Key: privateKey, RemotePorts: []int{torPort}})
+	//onion, err := t.t.Listen(listenCtx, &tor.ListenConf{LocalPort: localPort, Key: privateKey, RemotePorts: []int{torPort}})
 	// onion.
 	if err != nil {
 		return nil, err
@@ -289,6 +294,7 @@ func NewTorCon(datadir string) *TorCon {
 	log.Printf("pklen size [%d] [%s]", len(key.PublicKey()), key.PublicKey())
 
 	//panic("poop")
+	//t, err := tor.Start(nil, &tor.StartConf{DataDir: datadir, ProcessCreator: tor047.NewCreator()})
 	t, err := tor.Start(nil, &tor.StartConf{DataDir: datadir})
 	if err != nil {
 		//panic(err)

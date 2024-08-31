@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 
 	nntpclient "github.com/kothawoc/go-nntp/client"
 	"github.com/kothawoc/kothawoc/internal/torutils"
@@ -72,7 +73,15 @@ func (p *Peer) Worker() {
 			case CmdDistribute:
 				msg := cmd.Args[0].(messages.MessageTool)
 				// TODO: filter mail to see if we should actually post it?
-				p.Client.Post(strings.NewReader(msg.RawMail()))
+				if p.Client != nil {
+					time.Sleep(time.Second * 30)
+					if p.Client != nil {
+						p.Client.Post(strings.NewReader(msg.RawMail()))
+					} else {
+
+						fmt.Printf("CLIENT Error cannot send not connect: [%v]\n", p.TorId)
+					}
+				}
 
 			case CmdExit:
 				p.Conn.Close()
@@ -111,7 +120,7 @@ func (p *Peer) Connect() {
 		return
 		//return nil, err
 	}
-	if authed == false {
+	if authed == nil {
 		conn.Close()
 		fmt.Printf("CLIENT: Failed to handshake.\n")
 		return
@@ -192,13 +201,35 @@ func (p *Peers) Worker() {
 				var id int
 				var pubkey, name string
 				torid := cmd.Args[0].(string)
+				errChan := cmd.Args[1].(chan error)
+
+				row := p.Db.QueryRow("SELECT id,torid,pubkey,name FROM peers WHERE torid=?;", torid)
+				err := row.Scan(&id, &torid, &pubkey, &name)
+				log.Printf("ADDING PEER: [%s][%x] [%v]", torid, id, err)
+				if err != nil {
+					errChan <- fmt.Errorf("Peer already exists [%s]", torid)
+					continue
+				}
 
 				log.Printf("Adding peer [%d][%s][%s][%s]", id, torid, pubkey, name)
-				conn, _ := NewPeer(p.Tc, p.Cmd, torid, p.Db)
+				conn, err := NewPeer(p.Tc, p.Cmd, torid, p.Db)
+
+				log.Printf("ERROR ADDPEER [%v]", err)
+				if err != nil {
+					errChan <- err
+					continue
+				}
+				res, err := p.Db.Exec("INSERT INTO peers(torid,pubkey,name) VALUES(?,\"tmp\",\"\");", torid)
+				log.Printf("ERROR ADDPEER INSERT [%v][%v]", err, res)
+				if err != nil {
+					errChan <- err
+					continue
+				}
 				p.Conns[torid] = conn
 				cmd.Cmd = CmdConnect
 				p.Conns[torid].Cmd <- cmd
-
+				errChan <- nil
+				close(errChan)
 			}
 		case <-p.Exit:
 			return
@@ -207,12 +238,13 @@ func (p *Peers) Worker() {
 }
 
 func (p *Peers) AddPeer(torId string) error {
+	err := make(chan error)
 	p.Cmd <- PeeringMessage{
 		Cmd:  CmdAddPeer,
-		Args: []interface{}{torId},
+		Args: []interface{}{torId, err},
 	}
 
-	return nil
+	return <-err
 }
 
 func (p *Peers) RemovePeer(torId string) error {

@@ -335,10 +335,10 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		AddPeer:  be.Peers.AddPeer,
 	}
 
-	if res := messages.CheckControl(msg, cmf); res == true {
-		if res {
+	if err := messages.CheckControl(msg, cmf); err != nil {
 
-		}
+		log.Printf("ERROR POST Control message failed[%#v]", err)
+		return nntpserver.ErrPostingFailed
 	}
 
 	//	if ctrl := msg.Article.Header.Get("Control"); ctrl != "" {
@@ -351,7 +351,7 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 
 	for _, group := range splitGroups {
 		group := strings.TrimSpace(group)
-		row := be.DBs.groups.QueryRow("SELECT id,name FROM groups WHERE name=?", group)
+		row := be.DBs.groups.QueryRow("SELECT id,name FROM groups WHERE name=?;", group)
 
 		var name string
 		var id int64

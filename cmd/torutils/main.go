@@ -32,7 +32,7 @@ func server(tc *torutils.TorCon) {
 		if err != nil {
 			continue
 		}
-		if authed == false {
+		if authed == nil {
 			conn.Close()
 			continue
 		}
@@ -78,7 +78,7 @@ func main() {
 			fmt.Printf("CLIENT Error Dialer connect: [%v]\n", err)
 			return
 		}
-		if authed == false {
+		if authed == nil {
 			conn.Close()
 			fmt.Printf("CLIENT: Failed to handshake.\n")
 			continue
