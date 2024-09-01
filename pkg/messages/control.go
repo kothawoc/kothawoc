@@ -53,9 +53,10 @@ Allbery & Lindsey           Standards Track                    [Page 37] - [Page
 */
 
 type ControMesasgeFunctions struct {
-	NewGroup func(name, description, flags string) error
-	AddPeer  func(name string) error
-	Cancel   func(from, messageid, newsgroups string) error
+	NewGroup   func(name, description, flags string) error
+	AddPeer    func(name string) error
+	RemovePeer func(name string) error
+	Cancel     func(from, messageid, newsgroups string, cmf ControMesasgeFunctions) error
 }
 
 // func CheckControl(msg *messages.MessageTool, newGroup func(name, description, flags string) error) bool {
@@ -79,7 +80,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 		case "cancel": // RFC 5537 - 5.3. The cancel Control Message
 			log.Printf("Cancel\n")
 
-			cmf.Cancel(msg.Article.Header.Get("From"), splitCtl[1], msg.Article.Header.Get("Newsgroups"))
+			return cmf.Cancel(msg.Article.Header.Get("From"), splitCtl[1], msg.Article.Header.Get("Newsgroups"), cmf)
 
 		case "newsgroup": // RFC 5537 - 5.2.1. The newgroup Control Message
 			// TODO: LOLz people can create any newsgroup name they wish, so long as it's

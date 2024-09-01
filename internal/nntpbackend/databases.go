@@ -277,7 +277,7 @@ func containsStr(elems []string, v string) bool {
 	}
 	return false
 }
-func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string) error {
+func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string, cmf messages.ControMesasgeFunctions) error {
 	// get a message by the id
 	// check it's valid
 	// if it is, loop through the newsgroups and delete them from the index
@@ -296,16 +296,20 @@ func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string) error {
 	signature := article.Header.Get(messages.SignatureHeader)
 	msgGroups := strings.Split(article.Header.Get("Newsgroups"), ",")
 	delGroups := strings.Split(newsgroups, ",")
-	//if err != nil {
-	//	log.Printf("CancelMessage [%v] ERROR Split newsgroups header[%v]", msgId, err)
-	//	return err
-	//}
+
 	log.Printf("CancelMessage [%v]", msgGroups)
 
 	for _, grp := range delGroups {
 		// if the message is actually in the group that they want to delete
 		if containsStr(msgGroups, grp) {
 			// delete message
+			splitGrp := strings.Split(grp, ".")
+			switch splitGrp[1] {
+			case "peers":
+				peerId := strings.Split(article.Header.Get("Control"), " ")[3]
+				return cmf.RemovePeer(peerId)
+
+			}
 
 			_, err = dbs.groupArticles[grp].Exec("DELETE FROM articles WHERE messageid=?;", msgId)
 			if err != nil {
@@ -315,23 +319,16 @@ func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string) error {
 				log.Printf("CancelMessage: SUCCESS  insert article to do db stuff at [%v] [%s]", err, msgId)
 			}
 
+			row := dbs.articles.QueryRow("UPDATE articles SET refs=refs - 1 WHERE messageid=? RETURNING refs;", msgId)
 			refs := int64(0)
-			row := dbs.articles.QueryRow("SELECT refs FROM articles WHERE messageid=?;", msgId)
 			err = row.Scan(&refs)
-			if err != nil {
-				log.Printf("CancelMessage: Ouch refs abc Error insert article to do db stuff at [%v] [%s]", err, msgId)
-				return err
-			} else {
-				log.Printf("CancelMessage: SUCCESS  refs insert article to do db stuff at [%v] [%s]", err, msgId)
-			}
-			refs--
-			_, err = dbs.articles.Exec("UPDATE articles SET refs=? WHERE messageid=?;", refs, msgId)
 			if err != nil {
 				log.Printf("CancelMessage: Ouch update refs def Error insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id"))
 				return err
 			} else {
 				log.Printf("CancelMessage: SUCCESS update refs insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id"))
 			}
+
 			if refs == 0 {
 				// delete the article off disc
 				err := os.Remove(dbs.path + "/articles/" + signature)

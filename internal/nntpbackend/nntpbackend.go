@@ -335,9 +335,10 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 	}
 	//np, _ := NewPeers(be.DBs.peers,be.)
 	cmf := messages.ControMesasgeFunctions{
-		NewGroup: be.DBs.NewGroup,
-		AddPeer:  be.Peers.AddPeer,
-		Cancel:   be.DBs.CancelMessage,
+		NewGroup:   be.DBs.NewGroup,
+		AddPeer:    be.Peers.AddPeer,
+		RemovePeer: be.Peers.RemovePeer,
+		Cancel:     be.DBs.CancelMessage,
 	}
 
 	if err := messages.CheckControl(msg, cmf); err != nil {
