@@ -236,7 +236,7 @@ func (be *NntpBackend) GetArticle(session map[string]string, group *nntp.Group, 
 	body := (strings.SplitN(string(message), "\r\n\r\n", 2))[1]
 	msg, err := mail.ReadMessage(bytes.NewReader(message))
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	article := &nntp.Article{
@@ -337,6 +337,7 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 	cmf := messages.ControMesasgeFunctions{
 		NewGroup: be.DBs.NewGroup,
 		AddPeer:  be.Peers.AddPeer,
+		Cancel:   be.DBs.CancelMessage,
 	}
 
 	if err := messages.CheckControl(msg, cmf); err != nil {
@@ -389,9 +390,9 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 
 		signature := article.Header.Get(messages.SignatureHeader)
 		messageId := article.Header.Get("Message-Id")
-		insert := `INSERT INTO articles(messageid, signature,refs) VALUES(?,?,?);`
+		insert := `INSERT INTO articles(messageid,signature,refs) VALUES(?,?,?);`
 
-		res, err := be.DBs.articles.Exec(insert, messageId, signature, "")
+		res, err := be.DBs.articles.Exec(insert, messageId, signature, len(postableGroups))
 		if err != nil {
 			log.Printf("Ouch abc Error insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id"))
 			return err
@@ -417,7 +418,7 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 
 		be.Peers.DistributeArticle(*msg)
 
-		for group, groupId := range postableGroups {
+		for group, _ := range postableGroups {
 			insert := "INSERT INTO articles(id,messageid) VALUES(?,?);"
 
 			_, err = be.DBs.groupArticles[group].Exec(insert, articleId, messageId)
@@ -431,7 +432,8 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 			sel := `SELECT refs FROM articles WHERE id=?;`
 
 			row := be.DBs.articles.QueryRow(sel, articleId)
-			refs := ""
+			//refs := ""
+			refs := int64(0)
 			err = row.Scan(&refs)
 			if err != nil {
 				log.Printf("Ouch refs abc Error insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id"))
@@ -439,7 +441,7 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 			} else {
 				log.Printf("SUCCESS  refs insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id"))
 			}
-			refs += fmt.Sprintf("|%x|", groupId)
+			refs++
 			_, err = be.DBs.articles.Exec("UPDATE articles SET refs=? WHERE id=?;", refs, articleId)
 			if err != nil {
 				log.Printf("Ouch update refs def Error insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id"))

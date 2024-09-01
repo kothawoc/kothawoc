@@ -172,6 +172,7 @@ func (m *MessageTool) writeRaw(signing bool) string {
 			partWriter, err := writer.CreatePart(part.Header)
 			if err != nil {
 				log.Fatal(err)
+				log.Printf("writeRaw partWriter error [%v", err)
 			}
 			part.Content = []byte(strings.Replace(string(part.Content), "\r", "", -1))
 			partWriter.Write([]byte(strings.Replace(string(part.Content), "\n", "\r\n", -1)))

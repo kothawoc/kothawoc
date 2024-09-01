@@ -75,6 +75,13 @@ func NewClient(path string) *Client {
 	return client
 }
 
+func (c *Client) DeviceKey() ed25519.PrivateKey {
+	return c.deviceKey
+}
+func (c *Client) DeviceId() string {
+	return c.deviceId
+}
+
 func (c *Client) ConfigSet(key string, val interface{}) error {
 	return c.be.DBs.ConfigSet(key, val)
 }
