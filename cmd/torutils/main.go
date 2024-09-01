@@ -14,8 +14,8 @@ func authCB(s ed25519.PublicKey) bool {
 	return true
 }
 
-func server(tc *torutils.TorCon) {
-	onion, _ := tc.Listen(80, 9980, ed25519.PrivateKey(torutils.GetPrivateKey()))
+func server(tc *torutils.TorCon, key ed25519.PrivateKey) {
+	onion, _ := tc.Listen(80, 9980, key)
 
 	fmt.Printf("SERVER Listening: [%v]\n", onion)
 	//defer listenCancel()
@@ -27,7 +27,7 @@ func server(tc *torutils.TorCon) {
 			continue
 		}
 
-		authed, err := tc.ServerHandshake(conn, ed25519.PrivateKey(torutils.GetPrivateKey()), authCB)
+		authed, err := tc.ServerHandshake(conn, key, authCB)
 		fmt.Printf("SERVER AUTHed: [%v] [%v]\n", authed, err)
 		if err != nil {
 			continue
@@ -51,12 +51,13 @@ func server(tc *torutils.TorCon) {
 
 func main() {
 
+	key := torutils.CreatePrivateKey()
 	//	torutils.Main()
 	tc := torutils.NewTorCon(os.Getenv("PWD") + "/data/tor-data")
 
 	fmt.Printf("TC Tor connected: [%v]\n", tc)
 
-	go server(tc)
+	go server(tc, key)
 
 	<-time.After(time.Second * 10)
 
@@ -72,7 +73,7 @@ func main() {
 			return
 		}
 
-		authed, err := tc.ClientHandshake(conn, torutils.GetPrivateKey(), "addxb2stt45nwbcv64aglgpz5r65m4ljgzp7mdelrt3oxhej3uykmdid")
+		authed, err := tc.ClientHandshake(conn, key, "addxb2stt45nwbcv64aglgpz5r65m4ljgzp7mdelrt3oxhej3uykmdid")
 		fmt.Printf("CLIENT Authed response [%v][%v]\n", authed, err)
 		if err != nil {
 			fmt.Printf("CLIENT Error Dialer connect: [%v]\n", err)

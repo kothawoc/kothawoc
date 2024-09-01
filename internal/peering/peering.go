@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cretz/bine/torutil/ed25519"
+
 	nntpclient "github.com/kothawoc/go-nntp/client"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/messages"
@@ -45,17 +47,19 @@ type Peer struct {
 	Conn      net.Conn
 	TorId     string
 	PubKey    string
+	Key       ed25519.PrivateKey
 	Name      string
 	Client    *nntpclient.Client
 	ParentCmd chan PeeringMessage
 	Cmd       chan PeeringMessage
 }
 
-func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, torId string, db *sql.DB) (*Peer, error) {
+func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, torId string, db *sql.DB, key ed25519.PrivateKey) (*Peer, error) {
 	Peer := &Peer{
 		Tc:        tc,
 		TorId:     torId,
 		ParentCmd: parent,
+		Key:       key,
 		Cmd:       make(chan PeeringMessage, 10),
 	}
 	go Peer.Worker()
@@ -118,7 +122,7 @@ func (p *Peer) Connect() {
 		//return nil, err
 	}
 
-	authed, err := p.Tc.ClientHandshake(conn, torutils.GetPrivateKey(), p.TorId)
+	authed, err := p.Tc.ClientHandshake(conn, p.Key, p.TorId)
 	fmt.Printf("CLIENT Authed response [%v][%v]\n", authed, err)
 	if err != nil {
 		fmt.Printf("CLIENT Error Dialer connect: [%v]\n", err)
@@ -140,17 +144,19 @@ func (p *Peer) Connect() {
 
 type Peers struct {
 	Conns map[string]*Peer
+	Key   ed25519.PrivateKey
 	Tc    *torutils.TorCon
 	Db    *sql.DB
 	Cmd   chan PeeringMessage
 	Exit  chan interface{}
 }
 
-func NewPeers(db *sql.DB, tc *torutils.TorCon) (*Peers, error) {
+func NewPeers(db *sql.DB, tc *torutils.TorCon, key ed25519.PrivateKey) (*Peers, error) {
 	Peers := &Peers{
 		Conns: make(map[string]*Peer),
 		Cmd:   make(chan PeeringMessage, 10),
 		Exit:  make(chan interface{}),
+		Key:   key,
 		Tc:    tc,
 		Db:    db,
 	}
@@ -190,7 +196,7 @@ func (p *Peers) Worker() {
 						//		return nil, err
 					}
 					log.Printf("peerlist [%d][%s][%s][%s]", id, torid, pubkey, name)
-					conn, _ := NewPeer(p.Tc, p.Cmd, torid, p.Db)
+					conn, _ := NewPeer(p.Tc, p.Cmd, torid, p.Db, p.Key)
 					p.Conns[torid] = conn
 					p.Conns[torid].Cmd <- cmd
 					// dialup torid
@@ -217,7 +223,7 @@ func (p *Peers) Worker() {
 				}
 
 				log.Printf("Adding peer [%d][%s][%s][%s]", id, torid, pubkey, name)
-				conn, err := NewPeer(p.Tc, p.Cmd, torid, p.Db)
+				conn, err := NewPeer(p.Tc, p.Cmd, torid, p.Db, p.Key)
 
 				log.Printf("ERROR ADDPEER [%v]", err)
 				if err != nil {

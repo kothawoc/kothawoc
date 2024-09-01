@@ -24,7 +24,7 @@
 - [ ] Support Expires header (and require it for control messages).
 - [ ] Support Supersedes header.
 - [ ] Control message;- Subscribe to peer's group.
-- [ ] Control message;- Cancel /delete message.
+- [x] Control message;- Cancel /delete message.
 - [ ] Control message;- Add group identity/vcard.
 - [ ] Control message;- Delete group.
 - [ ] Control message;- Unsubscribe from peer's group.

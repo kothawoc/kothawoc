@@ -3,9 +3,6 @@ package torutils
 import (
 	"bytes"
 	"encoding/base32"
-	"encoding/hex"
-	"log"
-	"os"
 	"strings"
 
 	"github.com/cretz/bine/torutil/ed25519"
@@ -17,36 +14,6 @@ func CreatePrivateKey() ed25519.PrivateKey {
 	var returnKey ed25519.PrivateKey
 	bpk, _ := ed25519.GenerateKey(nil)
 	returnKey = bpk.PrivateKey()
-
-	return returnKey
-}
-
-func GetPrivateKey() ed25519.PrivateKey {
-
-	var keyFile = "serviceinfo.json"
-
-	var privateKey string
-
-	var returnKey ed25519.PrivateKey
-
-	if data, err := os.ReadFile(keyFile); err != nil {
-
-		bpk, _ := ed25519.GenerateKey(nil)
-		returnKey = bpk.PrivateKey()
-		privateKey = hex.EncodeToString(returnKey)
-
-		if err := os.WriteFile(keyFile, []byte(privateKey), 0600); err != nil {
-			log.Panicf("Failed to save service info: %v", err)
-		}
-
-	} else {
-
-		privateKeyBytes, _ := hex.DecodeString(string(data))
-		returnKey = ed25519.PrivateKey(privateKeyBytes)
-		//pk := returnKey.Public()
-
-		//log.Printf("prvkey is: [%#v]\nPubkey is [%#v]\n", returnKey, (pk))
-	}
 
 	return returnKey
 }

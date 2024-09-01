@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cretz/bine/torutil/ed25519"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/kothawoc/go-nntp"
@@ -65,7 +66,9 @@ func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error)
 	//		NewGroup: be.DBs.NewGroup,
 	//		AddPeer:  np.AddPeer,
 
-	peers, err := peering.NewPeers(dbs.peers, tc)
+	key, _ := dbs.ConfigGetGetBytes("deviceKey")
+
+	peers, err := peering.NewPeers(dbs.peers, tc, ed25519.PrivateKey(key))
 	if err != nil {
 		return nil, err
 	}

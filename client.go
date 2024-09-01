@@ -155,7 +155,7 @@ func (c *Client) Dial() {
 }
 
 func (c *Client) GetKey() ed25519.PrivateKey {
-	return torutils.GetPrivateKey()
+	return c.deviceKey
 }
 
 func (c *Client) CreatePrivateKey() ed25519.PrivateKey {
@@ -202,7 +202,7 @@ func (c *Client) tcpServer(s *nntpserver.Server) {
 }
 
 func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
-	onion, _ := tc.Listen(80, 9980, ed25519.PrivateKey(torutils.GetPrivateKey()))
+	onion, _ := tc.Listen(80, 9980, c.deviceKey)
 
 	fmt.Printf("SERVER Listening: [%v]\n", onion)
 	//defer listenCancel()
@@ -230,7 +230,7 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
 				return false
 			}
 
-			authed, err := tc.ServerHandshake(conn, ed25519.PrivateKey(torutils.GetPrivateKey()), authCallback)
+			authed, err := tc.ServerHandshake(conn, c.deviceKey, authCallback)
 			fmt.Printf("SERVER AUTHed: [%v] [%v]\n", authed, err)
 			if err != nil {
 				return

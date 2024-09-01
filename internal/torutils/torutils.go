@@ -289,9 +289,7 @@ func (t *TorCon) Dial(proto, remote string) (net.Conn, error) {
 
 func NewTorCon(datadir string) *TorCon {
 
-	key := GetPrivateKey()
-
-	log.Printf("pklen size [%d] [%s]", len(key.PublicKey()), key.PublicKey())
+	//	log.Printf("pklen size [%d] [%s]", len(key.PublicKey()), key.PublicKey())
 
 	//panic("poop")
 	//t, err := tor.Start(nil, &tor.StartConf{DataDir: datadir, ProcessCreator: tor047.NewCreator()})
