@@ -219,14 +219,22 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
 			var clientPubKey ed25519.PublicKey
 			authCallback := func(key ed25519.PublicKey) bool {
 				clientPubKey = key
-				if torutils.EncodePublicKey(clientPubKey) == "3buuqev6fbwybjo6qch2bescuelkcqm4sf7w73dm3vmf55qnudug2kyd" {
+				match := int64(0)
+				row := c.be.Peers.Db.QueryRow("SELECT COUNT(*) FROM peers WHERE torid=?", torutils.EncodePublicKey(clientPubKey))
+				err := row.Scan(&match)
+				if err != nil {
+					log.Printf("Dodgy hacky auth FAILED for [%s]", torutils.EncodePublicKey(clientPubKey))
+					return false
+
+				}
+				if match == 1 {
 					log.Printf("Dodgy hacky auth accepted for [%s]", torutils.EncodePublicKey(clientPubKey))
 					return true
 				}
 				// if clientPubKey == getPeer {
 				// return true
 				// }
-				clientPubKey = key
+				//	clientPubKey = key
 				return false
 			}
 
