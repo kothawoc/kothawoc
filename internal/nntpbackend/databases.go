@@ -306,8 +306,14 @@ func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string, cmf message
 			splitGrp := strings.Split(grp, ".")
 			switch splitGrp[1] {
 			case "peers":
-				peerId := strings.Split(article.Header.Get("Control"), " ")[3]
-				return cmf.RemovePeer(peerId)
+				peerId := strings.Split(article.Header.Get("Control"), " ")[1]
+
+				err := cmf.RemovePeer(peerId)
+				if err != nil {
+
+					log.Printf("CancelMessage: Failed to remove peer [%v] [%s]", err, peerId)
+					return err
+				}
 
 			}
 

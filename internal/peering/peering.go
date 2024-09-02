@@ -208,6 +208,18 @@ func (p *Peers) Worker() {
 					peer.Cmd <- cmd
 				}
 
+			case CmdRemovePeer:
+
+				torid := cmd.Args[0].(string)
+				p.Conns[torid].Cmd <- cmd
+				delete(p.Conns, torid)
+				res, err := p.Db.Exec("DELETE FROM peers WHERE torid=?;", torid)
+				log.Printf("TRY REMOVE PEER DELETE [%v][%v]", err, res)
+				//if err != nil {
+				//	errChan <- err
+				//	continue
+				//}
+
 			case CmdAddPeer:
 				var id int
 				var pubkey, name string

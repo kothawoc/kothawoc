@@ -15,15 +15,16 @@
 - [x] Control message;- receiving and processing.
 - [x] Control message;- Create group.
 - [x] Control message;- Add peer.
+- [x] Control message;- Remove peer.
 - [\] Peering.
 
 ## Stage 2
 
 - [\] Identity vcard support, so a node/person can call them selves something, and possibly redirect them to other nodes.
-- [ ] Support Distribution header (and require it for security, really?).
+- [?] Support Distribution header (and require it for security, really?).
 - [ ] Support Expires header (and require it for control messages).
 - [ ] Support Supersedes header.
-- [x] Control message;- Subscribe to peer's group.
+- [ ] Control message;- Subscribe to peer's group.
 - [x] Control message;- Cancel /delete message.
 - [x] Control message;- Add group identity/vcard.
 - [ ] Control message;- Delete group.
