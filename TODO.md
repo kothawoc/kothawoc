@@ -19,13 +19,13 @@
 
 ## Stage 2
 
-- [ ] Identity vcard support, so a node/person can call them selves something, and possibly redirect them to other nodes.
-- [ ] Support Distribution header (and require it for security).
+- [\] Identity vcard support, so a node/person can call them selves something, and possibly redirect them to other nodes.
+- [ ] Support Distribution header (and require it for security, really?).
 - [ ] Support Expires header (and require it for control messages).
 - [ ] Support Supersedes header.
-- [ ] Control message;- Subscribe to peer's group.
+- [x] Control message;- Subscribe to peer's group.
 - [x] Control message;- Cancel /delete message.
-- [ ] Control message;- Add group identity/vcard.
+- [x] Control message;- Add group identity/vcard.
 - [ ] Control message;- Delete group.
 - [ ] Control message;- Unsubscribe from peer's group.
 

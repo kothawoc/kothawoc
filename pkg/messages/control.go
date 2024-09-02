@@ -1,12 +1,14 @@
 package messages
 
 import (
+	"bytes"
 	"log"
 	"net/textproto"
 	"strings"
 	"time"
 
 	"github.com/cretz/bine/torutil/ed25519"
+	vcard "github.com/emersion/go-vcard"
 
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
@@ -144,7 +146,7 @@ const (
 )
 */
 
-func CreateNewsGroupMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, name, description string, posting nntp.PostingStatus) (string, error) {
+func CreateNewsGroupMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, fullname, description string, card vcard.Card, posting nntp.PostingStatus) (string, error) {
 
 	// Subject: cmsg newgroup example.admin.info moderated
 	// Control: newgroup example.admin.info moderated
@@ -158,6 +160,38 @@ func CreateNewsGroupMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, n
 	}
 
 	ownerID := torutils.EncodePublicKey(key.PublicKey())
+	// *cough* clean off the initial id if it's there.
+	names := strings.Split(fullname, ownerID+".")
+	name := names[0]
+	if len(names) > 1 {
+		name = names[1]
+	}
+
+	parts := []MimePart{
+		{
+			Header:  textproto.MIMEHeader{"Content-Type": []string{"application/news-groupinfo;charset=UTF-8"}},
+			Content: []byte("For your newsgroups file:\r\n" + ownerID + "." + name + " " + description + modStr),
+		},
+		{
+			Header:  textproto.MIMEHeader{"Content-Type": []string{"text/plain;charset=UTF-8"}},
+			Content: []byte("This is a system control message to create the newsgroup " + ownerID + "." + name + ".\r\n"),
+		},
+	}
+	if card != nil {
+
+		buf := &bytes.Buffer{}
+		enc := vcard.NewEncoder(buf)
+		err := enc.Encode(card)
+		if err != nil {
+			return "", err
+		}
+		//fmt.Println("Form submitted ", buf.String())
+		parts = append(parts, MimePart{
+			Header:  textproto.MIMEHeader{"Content-Type": []string{"text/x-vcard;charset=UTF-8"}},
+			Content: buf.Bytes(),
+		})
+
+	}
 
 	return (&MessageTool{
 		Article: &nntp.Article{
@@ -172,16 +206,7 @@ func CreateNewsGroupMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, n
 			},
 		},
 		Preamble: "This is a MIME control message.",
-		Parts: []MimePart{
-			{
-				Header:  textproto.MIMEHeader{"Content-Type": []string{"application/news-groupinfo;charset=UTF-8"}},
-				Content: []byte("For your newsgroups file:\r\n" + ownerID + "." + name + " " + description + modStr),
-			},
-			{
-				Header:  textproto.MIMEHeader{"Content-Type": []string{"text/plain;charset=UTF-8"}},
-				Content: []byte("This is a system control message to create the newsgroup " + ownerID + "." + name + ".\r\n"),
-			},
-		},
+		Parts:    parts,
 	}).Sign(key)
 }
 

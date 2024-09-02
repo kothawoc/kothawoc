@@ -17,7 +17,6 @@ import (
 	"github.com/kothawoc/go-nntp"
 	nntpclient "github.com/kothawoc/go-nntp/client"
 	nntpserver "github.com/kothawoc/go-nntp/server"
-
 	"github.com/kothawoc/kothawoc/internal/nntpbackend"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/messages"
@@ -103,7 +102,8 @@ func (c *Client) ConfigGetString(key string) (string, error) {
 }
 
 func (c *Client) CreateNewGroup(name, description string, posting nntp.PostingStatus) error {
-	mail, err := messages.CreateNewsGroupMail(c.deviceKey, idGen, name, description, posting)
+	// TODO,
+	mail, err := messages.CreateNewsGroupMail(c.deviceKey, idGen, name, description, nil, posting)
 	log.Printf("New group mail err[%v]:=====================\n%s\n===================\n", err, mail)
 	if err != nil {
 		return err

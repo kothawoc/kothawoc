@@ -9,7 +9,10 @@ require (
 	golang.org/x/crypto v0.26.0
 )
 
-require github.com/cretz/bine v0.2.0
+require (
+	github.com/cretz/bine v0.2.0
+	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
+)
 
 require (
 	golang.org/x/net v0.21.0 // indirect
