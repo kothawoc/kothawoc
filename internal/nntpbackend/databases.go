@@ -195,6 +195,19 @@ func (dbs *backendDbs) GetPerms(torid, group string) *PermissionsGroupT {
 	log.Printf("E GetPerms [%s] [%s]", torid, group)
 
 	p := &PermissionsGroupT{}
+
+	gs := strings.Split(group, ".")[0]
+	if gs == torid {
+		log.Printf("E GetPerms HERE BE GOD [%s] [%s]", torid, group)
+		return &PermissionsGroupT{
+			Read:      true,
+			Reply:     true,
+			Post:      true,
+			Cancel:    true,
+			Supersede: true,
+		}
+	}
+
 	row := dbs.groups.QueryRow("SELECT id FROM groups;")
 	id := int64(0)
 	err := row.Scan(&id)

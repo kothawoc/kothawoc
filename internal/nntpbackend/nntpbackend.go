@@ -116,7 +116,7 @@ func (be *NntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group
 				log.Printf("Error in grouplist [%v]", err)
 				return
 			}
-			if perms := be.DBs.GetPerms(session["Id"], name); perms != nil && perms.Read {
+			if perms := be.DBs.GetPerms(session["Id"], name); perms != nil && !perms.Read {
 				//	if !be.DBs.GetPerms(session["Id"], name).Read {
 				continue
 			}
@@ -142,7 +142,7 @@ func (be *NntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group
 func (be *NntpBackend) GetGroup(session map[string]string, groupName string) (*nntp.Group, error) {
 	log.Printf("E GetGroup", session["Id"])
 
-	if perms := be.DBs.GetPerms(session["Id"], groupName); perms != nil && perms.Read {
+	if perms := be.DBs.GetPerms(session["Id"], groupName); perms != nil && !perms.Read {
 
 		//	if !be.DBs.GetPerms(session["Id"], groupName).Read {
 		return nil, nntpserver.ErrNoSuchGroup
@@ -270,7 +270,7 @@ func (be *NntpBackend) GetArticle(session map[string]string, group *nntp.Group, 
 func (be *NntpBackend) GetArticles(session map[string]string, group *nntp.Group, from, to int64) (<-chan nntpserver.NumberedArticle, error) {
 
 	log.Printf("E GetArticles")
-	if perms := be.DBs.GetPerms(session["Id"], group.Name); perms != nil && perms.Read {
+	if perms := be.DBs.GetPerms(session["Id"], group.Name); perms != nil && !perms.Read {
 		//if !be.DBs.GetPerms(session["Id"], group.Name).Read {
 		return nil, nntpserver.ErrInvalidArticleNumber
 	}
@@ -378,7 +378,7 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 
 	for _, group := range splitGroups {
 		group := strings.TrimSpace(group)
-		if !be.DBs.GetPerms(session["Id"], group).Post {
+		if post := be.DBs.GetPerms(session["Id"], group); post != nil && !post.Post {
 			continue
 		}
 		row := be.DBs.groups.QueryRow("SELECT id,name FROM groups WHERE name=?;", group)
