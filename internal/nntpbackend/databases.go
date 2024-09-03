@@ -192,19 +192,23 @@ type PermissionsGroupT struct {
 }
 
 func (dbs *backendDbs) GetPerms(torid, group string) *PermissionsGroupT {
+	log.Printf("E GetPerms [%s] [%s]", torid, group)
+
 	p := &PermissionsGroupT{}
 	row := dbs.groups.QueryRow("SELECT id FROM groups;")
 	id := int64(0)
 	err := row.Scan(&id)
 	if err != nil {
+		log.Printf("E GetPerms failgroup [%s] [%s] [%v]", torid, group, err)
 		return nil
 	}
 
-	row = dbs.groupArticles[fmt.Sprintf("%x", id)].QueryRow("SELECT read,reply,post,cancel,supersede FROM perms WHERE torid=?;", torid)
+	row = dbs.groupArticles[group].QueryRow("SELECT read,reply,post,cancel,supersede FROM perms WHERE torid=?;", torid)
 
 	err = row.Scan(&p.Read, &p.Reply, &p.Post, &p.Cancel, &p.Supersede)
 	if err != nil && err == sql.ErrNoRows {
-		row = dbs.groupArticles[fmt.Sprintf("%x", id)].QueryRow("SELECT read,reply,post,cancel,supersede FROM perms WHERE torid=?;", "group")
+		log.Printf("E GetPerms fail get other siht [%s] [%s] [%v]", torid, group, err)
+		row = dbs.groupArticles[group].QueryRow("SELECT read,reply,post,cancel,supersede FROM perms WHERE torid=?;", "group")
 		err = row.Scan(&p.Read, &p.Reply, &p.Post, &p.Cancel, &p.Supersede)
 		if err == nil {
 			return p

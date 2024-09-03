@@ -116,8 +116,8 @@ func (be *NntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group
 				log.Printf("Error in grouplist [%v]", err)
 				return
 			}
-
-			if !be.DBs.GetPerms(session["Id"], name).Read {
+			if perms := be.DBs.GetPerms(session["Id"], name); perms != nil && perms.Read {
+				//	if !be.DBs.GetPerms(session["Id"], name).Read {
 				continue
 			}
 
@@ -140,9 +140,11 @@ func (be *NntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group
 }
 
 func (be *NntpBackend) GetGroup(session map[string]string, groupName string) (*nntp.Group, error) {
-	log.Printf("E GetGroup")
+	log.Printf("E GetGroup", session["Id"])
 
-	if !be.DBs.GetPerms(session["Id"], groupName).Read {
+	if perms := be.DBs.GetPerms(session["Id"], groupName); perms != nil && perms.Read {
+
+		//	if !be.DBs.GetPerms(session["Id"], groupName).Read {
 		return nil, nntpserver.ErrNoSuchGroup
 	}
 
@@ -268,7 +270,8 @@ func (be *NntpBackend) GetArticle(session map[string]string, group *nntp.Group, 
 func (be *NntpBackend) GetArticles(session map[string]string, group *nntp.Group, from, to int64) (<-chan nntpserver.NumberedArticle, error) {
 
 	log.Printf("E GetArticles")
-	if !be.DBs.GetPerms(session["Id"], group.Name).Read {
+	if perms := be.DBs.GetPerms(session["Id"], group.Name); perms != nil && perms.Read {
+		//if !be.DBs.GetPerms(session["Id"], group.Name).Read {
 		return nil, nntpserver.ErrInvalidArticleNumber
 	}
 	retChan := make(chan nntpserver.NumberedArticle, 10)
