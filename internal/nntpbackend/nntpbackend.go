@@ -57,9 +57,9 @@ func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error)
 	os.MkdirAll(fmt.Sprintf("%s/articles", path), 0700)
 	dbs, _ := NewBackendDBs(path)
 
-	dbs.NewGroup("alt.misc.test", "Alt misc test group", "y")
-	dbs.NewGroup("misc.test", "Alt misc test group", "y")
-	dbs.NewGroup("alt.test", "Alt misc test group", "y")
+	//	dbs.NewGroup("alt.misc.test", "Alt misc test group", "y")
+	//	dbs.NewGroup("misc.test", "Alt misc test group", "y")
+	//	dbs.NewGroup("alt.test", "Alt misc test group", "y")
 
 	//	np := NewPeers()
 	//	cmf := messages.ControMesasgeFunctions{

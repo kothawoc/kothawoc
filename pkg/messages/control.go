@@ -10,10 +10,9 @@ import (
 	"github.com/cretz/bine/torutil/ed25519"
 	vcard "github.com/emersion/go-vcard"
 
+	//"github.com/kothawoc/kothawoc/internal/messages"
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
-
-	//"github.com/kothawoc/kothawoc/internal/messages"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 )
 
@@ -55,7 +54,7 @@ Allbery & Lindsey           Standards Track                    [Page 37] - [Page
 */
 
 type ControMesasgeFunctions struct {
-	NewGroup   func(name, description, flags string) error
+	NewGroup   func(name, description string, card vcard.Card) error
 	AddPeer    func(name string) error
 	RemovePeer func(name string) error
 	Cancel     func(from, messageid, newsgroups string, cmf ControMesasgeFunctions) error
@@ -88,26 +87,33 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 			// TODO: LOLz people can create any newsgroup name they wish, so long as it's
 			// one "word", lile "<ID>.Y0URMØ7#3r.w0z.ar.#4m$t3r!.`/tmp/andnoexploitsfoundhere`.fun"
 			splitGroup := strings.Split(splitCtl[1], ".")
+			var card vcard.Card
 			if msg.Article.Header.Get("From") == splitGroup[0] {
 				// the from header is the owner of the group, so allow it
-				flags := ""
+				//flags := ""
 				flaglen := 0
 				if len(splitCtl) == 3 {
-					flags = splitCtl[2]
+					//flags = splitCtl[2]
 					flaglen = 1
 				}
 				description := ""
 				for _, h := range msg.Parts {
-					if h.Header.Get("Content-Type") == "application/news-groupinfo;charset=UTF-8" {
+					switch h.Header.Get("Content-Type") {
+					case "application/news-groupinfo;charset=UTF-8":
 						// TODO FIXME: this is going to explode when handed a dodgy message
 						data := strings.Split(strings.Split(string(h.Content), "\n")[1], " ")
 						subslice := data[2 : len(data)-flaglen]
 						description = strings.Join(subslice, " ")
+					case "text/x-vcard;charset=UTF-8":
+						dec := vcard.NewDecoder(bytes.NewReader(h.Content))
+						card, _ = dec.Decode()
+						log.Printf("card: [%#v]", card)
 					}
+
 				}
 				//	description := strings.Join(splitCtl[2:len(splitCtl)-1], "\n")[1]
 				//be.DBs.NewGroup(splitCtl[1], description, splitCtl[len(splitCtl)])
-				return cmf.NewGroup(splitCtl[1], description, flags)
+				return cmf.NewGroup(splitCtl[1], description, card)
 
 			}
 			//dbs.NewGroup("alt.misc.test", "Alt misc test group", "y")

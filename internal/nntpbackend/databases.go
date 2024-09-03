@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	vcard "github.com/emersion/go-vcard"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/kothawoc/go-nntp"
@@ -80,6 +81,14 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 CREATE TABLE IF NOT EXISTS config (
 	key TEXT NOT NULL UNIQUE,
 	val BLOB
+	);
+CREATE TABLE IF NOT EXISTS perms (
+	torid TEXT NOT NULL UNIQUE,
+	read BOOLEAN DEFAULT FALSE,
+	reply BOOLEAN DEFAULT FALSE,
+	post BOOLEAN DEFAULT FALSE,
+	cancel BOOLEAN DEFAULT FALSE,
+	supersede BOOLEAN DEFAULT FALSE
 	);
 `
 
@@ -178,7 +187,7 @@ func (dbs *backendDbs) OpenGroups() error {
 
 }
 
-func (dbs *backendDbs) NewGroup(name, description, flags string) error {
+func (dbs *backendDbs) NewGroup(name, description string, card vcard.Card) error {
 
 	res, err := dbs.groups.Exec("INSERT INTO groups(name) VALUES(?);", name)
 	if err != nil {
@@ -209,9 +218,23 @@ func (dbs *backendDbs) NewGroup(name, description, flags string) error {
 		log.Printf("FAILED Upserting group config value group:[%s] desc:[%s] err:[%v] resp[%v]", name, description, err, msg)
 		return err
 	}
-	if msg, err := db.Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", "flags", flags); err != nil {
+	if msg, err := db.Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", "flags", "flags"); err != nil {
 		log.Printf("FAILED Upserting group config value group:[%s] desc:[%s] err:[%v] resp[%v]", name, description, err, msg)
 		return err
+	}
+
+	for _, v := range card["X-KW-PERMS"] {
+		torid := v.Value
+		read := v.Params.Get("READ") == "true"
+		reply := v.Params.Get("REPLY") == "true"
+		post := v.Params.Get("POST") == "true"
+		cancel := v.Params.Get("CANCEL") == "true"
+		supersede := v.Params.Get("SUPERSEDE") == "true"
+
+		if msg, err := db.Exec("INSERT OR REPLACE INTO perms (torid,read,reply,post,cancel,supersede) VALUES (?,?,?,?,?,?)", torid, read, reply, post, cancel, supersede); err != nil {
+			log.Printf("FAILED Upserting group config value group:[%s] desc:[%s] err:[%v] resp[%v]", name, description, err, msg)
+			return err
+		}
 	}
 
 	dbs.groupArticles[name] = db
