@@ -187,6 +187,34 @@ func (dbs *backendDbs) OpenGroups() error {
 
 }
 
+type PermissionsGroupT struct {
+	Read, Reply, Post, Cancel, Supersede bool
+}
+
+func (dbs *backendDbs) GetPerms(torid, group string) *PermissionsGroupT {
+	p := &PermissionsGroupT{}
+	row := dbs.groups.QueryRow("SELECT id FROM groups;")
+	id := int64(0)
+	err := row.Scan(&id)
+	if err != nil {
+		return nil
+	}
+
+	row = dbs.groupArticles[fmt.Sprintf("%x", id)].QueryRow("SELECT read,reply,post,cancel,supersede FROM perms WHERE torid=?;", torid)
+
+	err = row.Scan(&p.Read, &p.Reply, &p.Post, &p.Cancel, &p.Supersede)
+	if err != nil && err == sql.ErrNoRows {
+		row = dbs.groupArticles[fmt.Sprintf("%x", id)].QueryRow("SELECT read,reply,post,cancel,supersede FROM perms WHERE torid=?;", "group")
+		err = row.Scan(&p.Read, &p.Reply, &p.Post, &p.Cancel, &p.Supersede)
+		if err == nil {
+			return p
+		}
+		return nil
+	}
+
+	return p
+}
+
 func (dbs *backendDbs) NewGroup(name, description string, card vcard.Card) error {
 
 	res, err := dbs.groups.Exec("INSERT INTO groups(name) VALUES(?);", name)

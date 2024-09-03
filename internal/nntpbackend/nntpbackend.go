@@ -117,6 +117,10 @@ func (be *NntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group
 				return
 			}
 
+			if !be.DBs.GetPerms(session["Id"], name).Read {
+				continue
+			}
+
 			grp, err := be.GetGroup(session, name)
 
 			if err != nil {
@@ -137,6 +141,10 @@ func (be *NntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group
 
 func (be *NntpBackend) GetGroup(session map[string]string, groupName string) (*nntp.Group, error) {
 	log.Printf("E GetGroup")
+
+	if !be.DBs.GetPerms(session["Id"], groupName).Read {
+		return nil, nntpserver.ErrNoSuchGroup
+	}
 
 	if articles, ok := be.DBs.groupArticles[groupName]; ok {
 
@@ -205,6 +213,9 @@ func (be *NntpBackend) GetArticle(session map[string]string, group *nntp.Group, 
 
 	log.Printf("GetArticle [%v] [%s]", group, grpMsgId)
 
+	if !be.DBs.GetPerms(session["Id"], group.Name).Read {
+		return nil, nntpserver.ErrInvalidArticleNumber
+	}
 	// TODO, check the actual articles DB config to see
 	//       if the user can view the article.
 	// and it is actually in the db
@@ -257,7 +268,9 @@ func (be *NntpBackend) GetArticle(session map[string]string, group *nntp.Group, 
 func (be *NntpBackend) GetArticles(session map[string]string, group *nntp.Group, from, to int64) (<-chan nntpserver.NumberedArticle, error) {
 
 	log.Printf("E GetArticles")
-
+	if !be.DBs.GetPerms(session["Id"], group.Name).Read {
+		return nil, nntpserver.ErrInvalidArticleNumber
+	}
 	retChan := make(chan nntpserver.NumberedArticle, 10)
 
 	if from > to {
@@ -362,6 +375,9 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 
 	for _, group := range splitGroups {
 		group := strings.TrimSpace(group)
+		if !be.DBs.GetPerms(session["Id"], group).Post {
+			continue
+		}
 		row := be.DBs.groups.QueryRow("SELECT id,name FROM groups WHERE name=?;", group)
 
 		var name string
