@@ -270,7 +270,8 @@ func (t *TorCon) Listen(torPort, localPort int, privateKey ed25519.PrivateKey) (
 	listenCtx, _ := context.WithTimeout(context.Background(), 3*time.Minute)
 	// Create an onion service to listen on 8080 but show as 80
 	// localKey := getPrivateKey()
-	onion, err := t.t.Listen(listenCtx, &tor.ListenConf{Version3: true, LocalPort: localPort, Key: privateKey, RemotePorts: []int{torPort}})
+	onion, err := t.t.Listen(listenCtx, &tor.ListenConf{Version3: true, Key: privateKey, RemotePorts: []int{torPort}})
+	//onion, err := t.t.Listen(listenCtx, &tor.ListenConf{Version3: true, LocalPort: localPort, Key: privateKey, RemotePorts: []int{torPort}})
 	//onion, err := t.t.Listen(listenCtx, &tor.ListenConf{LocalPort: localPort, Key: privateKey, RemotePorts: []int{torPort}})
 	// onion.
 	if err != nil {
@@ -293,7 +294,7 @@ func NewTorCon(datadir string) *TorCon {
 
 	//panic("poop")
 	//t, err := tor.Start(nil, &tor.StartConf{DataDir: datadir, ProcessCreator: tor047.NewCreator()})
-	t, err := tor.Start(nil, &tor.StartConf{DataDir: datadir})
+	t, err := tor.Start(context.Background(), &tor.StartConf{DataDir: datadir})
 	if err != nil {
 		//panic(err)
 		log.Printf("Tor start Error: [%v]", err)
@@ -304,7 +305,7 @@ func NewTorCon(datadir string) *TorCon {
 		t: t,
 	}
 
-	<-time.After(time.Second)
+	//	<-time.After(time.Second)
 
 	//	log.Printf("Started dialing up")
 

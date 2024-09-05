@@ -21,7 +21,7 @@ that is longer now!
 
 func main() {
 
-	c := client.NewClient(os.Getenv("PWD") + "/data")
+	c := client.NewClient(os.Getenv("PWD")+"/data", 1119)
 
 	//c.Dial()
 	/*

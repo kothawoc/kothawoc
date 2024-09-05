@@ -216,6 +216,9 @@ func (dbs *backendDbs) GetPerms(torid, group string) *PermissionsGroupT {
 		return nil
 	}
 
+	if _, found := dbs.groupArticles[group]; !found {
+		return p
+	}
 	row = dbs.groupArticles[group].QueryRow("SELECT read,reply,post,cancel,supersede FROM perms WHERE torid=?;", torid)
 
 	err = row.Scan(&p.Read, &p.Reply, &p.Post, &p.Cancel, &p.Supersede)
@@ -371,10 +374,12 @@ func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string, cmf message
 		// if the message is actually in the group that they want to delete
 		if containsStr(msgGroups, grp) {
 			// delete message
+
+			cm := article.Header.Get("Control")
 			splitGrp := strings.Split(grp, ".")
 			switch splitGrp[1] {
 			case "peers":
-				peerId := strings.Split(article.Header.Get("Control"), " ")[1]
+				peerId := strings.Split(cm, " ")[1]
 
 				err := cmf.RemovePeer(peerId)
 				if err != nil {
@@ -382,6 +387,11 @@ func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string, cmf message
 					log.Printf("CancelMessage: Failed to remove peer [%v] [%s]", err, peerId)
 					return err
 				}
+			}
+
+			scm := strings.Split(cm, " ")
+			if scm[0] == "newsgroup" {
+				// delete newsgroup!!
 
 			}
 

@@ -68,12 +68,13 @@ func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, torId string, db *
 }
 
 func (p *Peer) Worker() {
+	//time.Sleep((time.Second * 30))
 	for {
 		select {
 		case cmd := <-p.Cmd:
 			switch cmd.Cmd {
 			case CmdConnect:
-				p.Connect()
+				p.Connect(cmd)
 
 			case CmdDistribute:
 				msg := cmd.Args[0].(messages.MessageTool)
@@ -84,7 +85,7 @@ func (p *Peer) Worker() {
 						p.Client.Post(strings.NewReader(msg.RawMail()))
 					} else {
 
-						fmt.Printf("CLIENT Error cannot send not connect: [%v]\n", p.TorId)
+						log.Printf("CLIENT Error cannot send not connect: [%v]\n", p.TorId)
 					}
 				}
 
@@ -109,29 +110,31 @@ func (p *Peer) Worker() {
 	}
 }
 
-func (p *Peer) Connect() {
+func (p *Peer) Connect(cmd PeeringMessage) {
 
-	fmt.Printf("CLIENT Dialing\n")
+	log.Printf("CLIENT Dialing [%s]", p.TorId)
 	conn, err := p.Tc.Dial("tcp", p.TorId+".onion:80")
 	//defer conn.Close()
 
-	fmt.Printf("CLIENT Dialing response [%v][%v]\n", conn, err)
+	log.Printf("CLIENT Dialing response [%v][%v]\n", conn, err)
 	if err != nil {
-		fmt.Printf("Error Dialer connect: [%v]\n", err)
+		time.Sleep(time.Second * 5)
+		log.Printf("Error Dialer connect: [%v] try again.\n", err)
+		p.Cmd <- cmd
 		return
 		//return nil, err
 	}
 
 	authed, err := p.Tc.ClientHandshake(conn, p.Key, p.TorId)
-	fmt.Printf("CLIENT Authed response [%v][%v]\n", authed, err)
+	log.Printf("CLIENT Authed response [%v][%v]\n", authed, err)
 	if err != nil {
-		fmt.Printf("CLIENT Error Dialer connect: [%v]\n", err)
+		log.Printf("CLIENT Error Dialer connect: [%v]\n", err)
 		return
 		//return nil, err
 	}
 	if authed == nil {
 		conn.Close()
-		fmt.Printf("CLIENT: Failed to handshake.\n")
+		log.Printf("CLIENT: Failed to handshake.\n")
 		return
 		//return nil, errors.New("Failed hanshake, signature didn't match.")
 	}
@@ -140,6 +143,7 @@ func (p *Peer) Connect() {
 	p.Client = c
 
 	p.Conn = conn
+	c.Authenticate("user", "password")
 }
 
 type Peers struct {

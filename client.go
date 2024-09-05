@@ -1,12 +1,12 @@
 package kothawoc
 
 import (
-	"crypto/rand"
 	"database/sql"
 	"encoding/base32"
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -32,7 +32,7 @@ type Client struct {
 	Tor        *torutils.TorCon
 }
 
-func NewClient(path string) *Client {
+func NewClient(path string, port int) *Client {
 
 	tc := torutils.NewTorCon(path + "/data")
 	nntpBackend, _ := nntpbackend.NewNNTPBackend(path, tc)
@@ -65,12 +65,13 @@ func NewClient(path string) *Client {
 
 	client.Server = s
 
-	go client.tcpServer(s)
+	go client.tcpServer(s, port)
 	go client.torServer(tc, s)
 
+	//go func() {
 	client.Dial()
 	client.CreateNewGroup("peers", "Control group for peering messages.", nntp.PostingPermitted)
-
+	//}()
 	return client
 }
 
@@ -179,8 +180,8 @@ func (i GenIdType) GenID() string {
 
 var idGen GenIdType
 
-func (c *Client) tcpServer(s *nntpserver.Server) {
-	a, err := net.ResolveTCPAddr("tcp", ":1119")
+func (c *Client) tcpServer(s *nntpserver.Server, port int) {
+	a, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
 	log.Printf("Error resolving listener: %v", err)
 	l, err := net.ListenTCP("tcp", a)
 	log.Printf("Error setting up listener: %v", err)
@@ -202,7 +203,10 @@ func (c *Client) tcpServer(s *nntpserver.Server) {
 }
 
 func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
-	onion, _ := tc.Listen(80, 9980, c.deviceKey)
+
+	fmt.Printf("SERVER Starting: [%v]\n", tc)
+	onion, _ := tc.Listen(80, 0, c.deviceKey)
+	//	onion, _ := tc.Listen(80, 9980+rand.Intn(1000), c.deviceKey)
 
 	fmt.Printf("SERVER Listening: [%v]\n", onion)
 	//defer listenCancel()

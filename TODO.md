@@ -8,8 +8,8 @@
 - [x] Reject all non signed and verified message.
 - [x] Search and read messages.
 - [x] Connection authentication.
-- [ ] Security groups and flags.
-- [ ] Identity group access control.
+- [\] Security groups and flags.
+- [\] Identity group access control.
 - [\] Control message;- delegate permissions/authority to post, delete, and delegate authority.
 - [x] Control message;- sending.
 - [x] Control message;- receiving and processing.
