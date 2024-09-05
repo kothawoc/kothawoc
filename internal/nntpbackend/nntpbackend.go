@@ -352,6 +352,32 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		log.Printf("Error Posting, failed to verify message")
 		return nntpserver.ErrPostingNotPermitted
 	}
+
+	deviceKey, _ := be.DBs.ConfigGetGetBytes("deviceKey")
+	torId := torutils.EncodePublicKey(ed25519.PrivateKey(deviceKey).PublicKey())
+	path := msg.Article.Header.Get("Path")
+	if session["ConnMode"] == ConnModeTcp ||
+		session["ConnMode"] == ConnModeLocal {
+		if path == "" {
+			log.Printf("ADDPATH LOC EMPTY md[%s] path[%s]", session["ConnMode"], path)
+			path = torId + "!.POSTED"
+		} else { // This shouldn't happen, but if it does at least we know about it.
+			log.Printf("ADDPATH LOC FULL md[%s] path[%s]", session["ConnMode"], path)
+			path = torId + "!.POSTED!" + path
+		}
+	} else {
+		if path == "" {
+			log.Printf("ADDPATH TOR EMPTY md[%s] path[%s]", session["ConnMode"], path)
+			log.Printf("Error Path header should not be empty from a peer")
+			return nntpserver.ErrPostingNotPermitted
+		} else {
+
+			log.Printf("ADDPATH TOR FULL md[%s] path[%s]", session["ConnMode"], path)
+			path = torId + "!" + path
+		}
+	}
+	msg.Article.Header.Set("Path", path)
+
 	//np, _ := NewPeers(be.DBs.peers,be.)
 	cmf := messages.ControMesasgeFunctions{
 		NewGroup:   be.DBs.NewGroup,
