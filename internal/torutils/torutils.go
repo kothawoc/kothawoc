@@ -284,8 +284,12 @@ func (t *TorCon) Listen(torPort, localPort int, privateKey ed25519.PrivateKey) (
 }
 
 func (t *TorCon) Dial(proto, remote string) (net.Conn, error) {
-	conn, err := t.dialer.Dial(proto, remote)
-	return conn, err
+	if t.dialer != nil {
+		conn, err := t.dialer.Dial(proto, remote)
+		return conn, err
+	} else {
+		return nil, net.ErrClosed
+	}
 }
 
 func NewTorCon(datadir string) *TorCon {
@@ -309,16 +313,20 @@ func NewTorCon(datadir string) *TorCon {
 
 	//	log.Printf("Started dialing up")
 
-	dialCtx, _ := context.WithTimeout(context.Background(), time.Minute)
+	go func() {
+		time.Sleep(time.Second * 3)
+		dialCtx, _ := context.WithTimeout(context.Background(), time.Minute)
 
-	// Make connection
-	dialer, err := tc.t.Dialer(dialCtx, nil)
-	if err != nil {
-		log.Printf("Error Dialer setup: [%v]", err)
-		return nil
-	}
+		// Make connection
+		dialer, err := tc.t.Dialer(dialCtx, nil)
+		if err != nil {
+			log.Printf("Error Dialer setup: [%v]", err)
+			//return nil
+			return
+		}
 
-	tc.dialer = dialer
+		tc.dialer = dialer
+	}()
 
 	return tc
 

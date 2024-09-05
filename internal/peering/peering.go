@@ -69,20 +69,33 @@ func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, torId string, db *
 
 func (p *Peer) Worker() {
 	//time.Sleep((time.Second * 30))
+	go func() {
+		for {
+			time.Sleep(time.Second * 5)
+			p.Cmd <- PeeringMessage{}
+		}
+	}()
 	for {
 		select {
 		case cmd := <-p.Cmd:
+			//log.Printf("Spam Command Loop: [%#v]", cmd)
 			switch cmd.Cmd {
 			case CmdConnect:
-				p.Connect(cmd)
+				p.Connect()
 
 			case CmdDistribute:
 				msg := cmd.Args[0].(messages.MessageTool)
 				// TODO: filter mail to see if we should actually post it?
 				if p.Client != nil {
-					time.Sleep(time.Second * 30)
+					//time.Sleep(time.Second * 30)
 					if p.Client != nil {
-						p.Client.Post(strings.NewReader(msg.RawMail()))
+						err := p.Client.Post(strings.NewReader(msg.RawMail()))
+						if err != nil {
+
+							log.Printf("CLIENT POST Error cannot send attempting reconnect: [%v]\n", p.TorId)
+							p.Conn.Close()
+							p.Conn = nil
+						}
 					} else {
 
 						log.Printf("CLIENT Error cannot send not connect: [%v]\n", p.TorId)
@@ -107,10 +120,16 @@ func (p *Peer) Worker() {
 			//case "Connect":
 			//}
 		}
+		p.Connect()
+
 	}
 }
 
-func (p *Peer) Connect(cmd PeeringMessage) {
+func (p *Peer) Connect() {
+	//
+	if p.Conn != nil {
+		return
+	}
 
 	log.Printf("CLIENT Dialing [%s]", p.TorId)
 	conn, err := p.Tc.Dial("tcp", p.TorId+".onion:80")
@@ -120,7 +139,7 @@ func (p *Peer) Connect(cmd PeeringMessage) {
 	if err != nil {
 		time.Sleep(time.Second * 5)
 		log.Printf("Error Dialer connect: [%v] try again.\n", err)
-		p.Cmd <- cmd
+		//p.Cmd <- cmd
 		return
 		//return nil, err
 	}

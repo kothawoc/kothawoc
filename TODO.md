@@ -16,7 +16,8 @@
 - [x] Control message;- Create group.
 - [x] Control message;- Add peer.
 - [x] Control message;- Remove peer.
-- [\] Peering.
+- [x] Peering.
+- [ ] Path header.
 
 ## Stage 2
 
