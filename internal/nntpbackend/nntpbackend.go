@@ -479,7 +479,7 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 
 		be.Peers.DistributeArticle(*msg)
 
-		for group, _ := range postableGroups {
+		for group := range postableGroups {
 			insert := "INSERT INTO articles(id,messageid) VALUES(?,?);"
 
 			_, err = be.DBs.groupArticles[group].Exec(insert, articleId, messageId)

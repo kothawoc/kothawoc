@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"mime"
 	"mime/multipart"
 	"net/textproto"
@@ -19,7 +19,6 @@ import (
 	"github.com/cretz/bine/torutil/ed25519"
 	"github.com/kothawoc/go-nntp"
 	"github.com/kothawoc/kothawoc/pkg/keytool"
-	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 /*
@@ -91,7 +90,7 @@ func (m *MessageTool) Sign(privateKey ed25519.PrivateKey) (string, error) {
 	signature := base32.StdEncoding.EncodeToString(ed25519.Sign(privateKey, []byte(data)))
 
 	os.WriteFile("sign.txt", []byte(data), 0600)
-	log.Print(serr.Errorf("Signing message:--------------------------------\n%s\n---------------------------------Signature: [%s]", string(data), signature))
+	slog.Info("Signing message", "data", string(data), "signature", signature)
 	(*m).Article.Header.Set(SignatureHeader, signature)
 	return m.writeRaw(false), nil
 }
@@ -102,24 +101,24 @@ func (m *MessageTool) RawMail() string {
 
 func (m *MessageTool) Verify() bool {
 	//sigPart := m.Parts[len(m.Parts)-1]
-	log.Print(serr.Errorf("Verify:-------------------------------------------------------\n%s------------------------\n\n", m.writeRaw(true)))
+	slog.Info("verify", "message", m.writeRaw(true))
 
 	b32Signature := []byte(m.Article.Header.Get(SignatureHeader))
 
 	dst := make([]byte, 256)
 	n, err := base32.StdEncoding.Decode(dst, b32Signature)
 	if err != nil {
-		log.Print(serr.Errorf("Failed to decode b32 signature."))
+		slog.Info("Failed to decode b32 signature.")
 		return false
 	}
 	signature := dst[:n]
 
 	pubKey, err := hex.DecodeString(m.Article.Header.Get("Approved"))
 	if err != nil {
-		log.Print(serr.Errorf("Failed to decode pubkey."))
+		slog.Info("Failed to decode pubkey.")
 		return false
 	}
-	log.Print(serr.Errorf("Checking Approved: [%s][%s]\n", pubKey, b32Signature))
+	slog.Info("Checking Approved", "pubKey", pubKey, "b32Signature", b32Signature)
 	os.WriteFile("verify.txt", []byte(m.writeRaw(true)), 0600)
 	verified := ed25519.Verify(ed25519.PublicKey(pubKey), []byte(m.writeRaw(true)), signature)
 	//verified = true
@@ -127,7 +126,7 @@ func (m *MessageTool) Verify() bool {
 }
 
 func (m *MessageTool) writeRaw(signing bool) string {
-	log.Print(serr.Errorf("Write raw start [%v] and preamble:\n%s\n-------------------------\n", signing, m.Preamble))
+	slog.Info("Write raw start and preamble", "signing", signing, "preamble", m.Preamble)
 	// Buffer to store the email
 	var buf bytes.Buffer
 
@@ -136,7 +135,7 @@ func (m *MessageTool) writeRaw(signing bool) string {
 	//writer := buf
 	_, params, err := mime.ParseMediaType(m.Article.Header.Get("Content-Type"))
 	if err != nil {
-		log.Print(serr.Errorf("Errored in parsing media type for stuff: [%v]:[%v]", err, m.Article.Header.Get("Content-Type")))
+		slog.Info("Errored in parsing media type for stuff", "error", err, "header", m.Article.Header.Get("Content-Type"))
 		//		return ""
 	} else {
 		writer = multipart.NewWriter(&buf)
@@ -176,7 +175,7 @@ func (m *MessageTool) writeRaw(signing bool) string {
 			partWriter, err := writer.CreatePart(part.Header)
 			if err != nil {
 				//	log.Fatal(err)
-				log.Print(serr.Errorf("ERROR: writeRaw partWriter error [%v", err))
+				slog.Info("ERROR: writeRaw partWriter error", "error", err)
 				return ""
 			}
 			part.Content = []byte(strings.Replace(string(part.Content), "\r", "", -1))
@@ -196,7 +195,7 @@ func (m *MessageTool) ParseBody() {
 	_, params, err := mime.ParseMediaType(m.Article.Header.Get("Content-Type"))
 	if err == nil {
 		hasMime = true
-		log.Print(serr.Errorf("have mime"))
+		slog.Info("have mime")
 	}
 
 	// Read the preamble manually

@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"strings"
 	"time"
@@ -34,7 +34,7 @@ func readConnUntilLF(conn net.Conn) (string, error) {
 		n, err := conn.Read(tbuf)
 		//log.Printf("RTLF: [%n][%d][%s]\n", n, tbuf[0], string(tbuf[0]))
 		if err != nil {
-			log.Print(serr.Errorf("RTL error [%v] size[%d], [%s]\n", err, n, rets))
+			slog.Info("RTL error", "error", err, "size", n, "rets", rets)
 			return rets, err
 		}
 		if tbuf[0] == '\n' {
@@ -98,8 +98,8 @@ func (t *TorCon) ClientHandshake(conn net.Conn, privateKey ed25519.PrivateKey, r
 
 	verified := ed25519.Verify(serverPubKey, []byte(serverMesg), serverSig)
 	//log.Printf("CLIENT HANDSHAKE VERIFY RESPONSE [%v] RESPONSE: [%s]\n", verified, response)
-	if verified == false {
-		return nil, fmt.Errorf("Error: faied to verify server cert.")
+	if !verified {
+		return nil, fmt.Errorf("faied to verify server cert")
 	}
 
 	// sign server message so they can trust you.
@@ -149,13 +149,13 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 	clientSig, _ := hex.DecodeString(string(splitRequest[3]))
 	clientMesg := strings.Join(splitRequest[:3], " ")
 	// check that the claimed client tor id matches the public key
-	if authCallback(clientPubKey) == false {
-		log.Print(serr.Errorf("SERVER HANDSHAKE AUTH CALLBACK FAILED [%s]\n", clientMesg))
+	if !authCallback(clientPubKey) {
+		slog.Info("SERVER HANDSHAKE AUTH CALLBACK FAILED", "clientMesg", clientMesg)
 		return nil, serr.Errorf("Error: client TorId refused by callback.")
 	}
 	verified := ed25519.Verify(ed25519.PublicKey(clientPubKey), []byte(clientMesg), clientSig)
-	if verified == false {
-		log.Print(serr.Errorf("SERVER HANDSHAKE AUTH SIGNATURE FAILED [%s]\n", clientMesg))
+	if !verified {
+		slog.Info("SERVER HANDSHAKE AUTH SIGNATURE FAILED", "clientMesg", clientMesg)
 		return nil, serr.Errorf("Error: failed to verify client cert.")
 	}
 
@@ -185,7 +185,7 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 	verified = ed25519.Verify(clientPubKey, []byte(initialHandshake[:len(initialHandshake)-1]), clientSig)
 	if verified {
 		conn.Write([]byte("OK\n"))
-		log.Print(serr.Errorf("Error: faied to verify server cert."))
+		slog.Info("Error: faied to verify server cert.")
 		return clientPubKey, nil
 	}
 	return nil, serr.Errorf("Error: failed to verify server cert.")
@@ -228,7 +228,7 @@ func NewTorCon(datadir string) *TorCon {
 	t, err := tor.Start(context.Background(), &tor.StartConf{DataDir: datadir})
 	if err != nil {
 		//panic(err)
-		log.Print(serr.Errorf("Tor start Error: [%v]", err))
+		slog.Info("Tor start Error", "error", err)
 		return nil
 	}
 
@@ -247,7 +247,7 @@ func NewTorCon(datadir string) *TorCon {
 		// Make connection
 		dialer, err := tc.t.Dialer(dialCtx, nil)
 		if err != nil {
-			log.Print(serr.Errorf("Error Dialer setup: [%v]", err))
+			slog.Info("Error Dialer setup", "error", err)
 			//return nil
 			return
 		}
@@ -257,4 +257,12 @@ func NewTorCon(datadir string) *TorCon {
 
 	return tc
 
+}
+
+func Sign(privateKey ed25519.PrivateKey, data []byte) []byte {
+	return ed25519.Sign(privateKey, data)
+}
+
+func Verify(publicKey ed25519.PublicKey, signature, data []byte) bool {
+	return ed25519.Verify(publicKey, data, signature)
 }

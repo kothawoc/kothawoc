@@ -5,9 +5,10 @@ import (
 	"encoding/base32"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"math/rand"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,12 @@ type Client struct {
 	Tor        *torutils.TorCon
 }
 
+func init() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: true}))
+	slog.SetDefault(logger)
+	slog.Info("Set logger")
+}
+
 func NewClient(path string, port int) (*Client, error) {
 
 	tc := torutils.NewTorCon(path + "/data")
@@ -50,12 +57,12 @@ func NewClient(path string, port int) (*Client, error) {
 		deviceKey = client.CreatePrivateKey()
 		err = client.ConfigSet("deviceKey", deviceKey)
 		if err != nil {
-			log.Print(serr.Errorf("Error: %q", err))
+			slog.Info("error", "error", err)
 			return nil, serr.New(err)
 		}
 	}
 	if err != nil {
-		log.Print(serr.Errorf("Error: %q", err))
+		slog.Info("error", "error", err)
 		return nil, serr.New(err)
 	}
 
@@ -172,7 +179,10 @@ func (c *Client) GetKey() ed25519.PrivateKey {
 }
 
 func (c *Client) CreatePrivateKey() ed25519.PrivateKey {
-	return torutils.CreatePrivateKey()
+	kt := keytool.EasyEdKey{}
+	kt.GenerateKey()
+	key, _ := kt.TorPrivKey()
+	return key
 }
 
 type GenIdType struct {
@@ -197,45 +207,45 @@ func (c *Client) tcpServer(s *nntpserver.Server, port int) error {
 	if err != nil {
 		return serr.New(err)
 	}
-	log.Print(serr.Errorf("Error resolving listener: %v", serr.New(err)))
+	slog.Info("Error resolving listener", "error", err)
 	l, err := net.ListenTCP("tcp", a)
 	if err != nil {
 		l.Close()
 		return serr.New(err)
 	}
-	log.Printf("Error setting up listener: %v", serr.New(err))
+	slog.Info("Error setting up listener", "error", err)
 	defer l.Close()
 
 	for {
 		conn, err := l.AcceptTCP()
 
-		log.Print(serr.Errorf("Error accepting connection: %v", serr.New(err)))
+		slog.Info("Error accepting connection", err)
 		clientSession := nntpserver.ClientSession{
 			"Id":       c.deviceId,
 			"PubKey":   string(fmt.Sprintf("%x", c.deviceKey.PublicKey())),
 			"ConnMode": nntpbackend.ConnModeTcp,
 		}
 
-		log.Print(serr.Errorf("clid stuff [%#v][%#v]", c.deviceId, idGen))
+		slog.Info("clid stuff [%#v][%#v]", c.deviceId, idGen)
 		go s.Process(conn, clientSession)
 	}
 }
 
 func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 
-	log.Print(serr.Errorf("SERVER Starting: [%v]", tc))
+	slog.Info("SERVER Starting", "torconn", tc)
 	onion, err := tc.Listen(80, c.deviceKey)
 	if err != nil {
 		return serr.New(err)
 	}
 
-	log.Print(serr.Errorf("SERVER Listening: [%v]", onion))
+	slog.Info("SERVER Listening", "onion", onion)
 	//defer listenCancel()
 	for {
 		conn, err := onion.Accept()
-		log.Print(serr.Errorf("SERVER Accept: [%v]\n", onion))
+		slog.Info("SERVER Accept", "onion", onion)
 		if err != nil {
-			log.Print(serr.Errorf("SERVER ERROR Accept: [%v] [%v]\n", onion, err))
+			slog.Info("SERVER ERROR Accept", "onion", onion, "error", err)
 			continue
 		}
 		go func() {
@@ -250,19 +260,19 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 				kt.SetTorPublicKey(clientPubKey)
 				torId, err := kt.TorId()
 				if err != nil {
-					log.Print(serr.Errorf("failed to convert torID: [%v]", err))
+					slog.Info("failed to convert torID: [%v]", err)
 					return false
 				}
 
 				row := c.be.Peers.Db.QueryRow("SELECT COUNT(*) FROM peers WHERE torid=?", torId)
 				err = row.Scan(&match)
 				if err != nil {
-					log.Print(serr.Errorf("Dodgy hacky auth FAILED for [%s]", torId))
+					slog.Info("Dodgy hacky auth FAILED for", "torid", torId)
 					return false
 
 				}
 				if match == 1 {
-					log.Print(serr.Errorf("Dodgy hacky auth accepted for [%s]", torId))
+					slog.Info("Dodgy hacky auth accepted for", "torid", torId)
 					return true
 				}
 				// if clientPubKey == getPeer {
@@ -273,7 +283,7 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 			}
 
 			authed, err := tc.ServerHandshake(conn, c.deviceKey, authCallback)
-			log.Print(serr.Errorf("SERVER AUTHed: [%v] [%v]", authed, err))
+			slog.Info("SERVER AUTHed", "authed", authed, "error", err)
 			if err != nil {
 				conn.Close()
 				return
@@ -287,7 +297,7 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 			kt.SetTorPublicKey(clientPubKey)
 			torId, err := kt.TorId()
 			if err != nil {
-				log.Print(serr.Errorf("failed to convert torID: [%v]", err))
+				slog.Info("failed to convert torID", "error", err)
 				return
 			}
 
@@ -298,9 +308,9 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 				"ConnMode": nntpbackend.ConnModeTor,
 			}
 
-			log.Print(serr.Errorf("tor connection stuff [%#v][%#v]", c.deviceId, idGen))
+			slog.Info("tor connection stuff", "deviceid", c.deviceId, "idgen", idGen)
 			s.Process(conn, clientSession)
-			log.Print(serr.Errorf("tor disconnection stuff [%#v][%#v]", c.deviceId, idGen))
+			slog.Info("tor disconnection stuff", "deviceid", c.deviceId, "idgen", idGen)
 			/*
 				TODO: fix the client stuff
 				2024/08/31 09:21:39 Error reading from client, dropping conn: EOF

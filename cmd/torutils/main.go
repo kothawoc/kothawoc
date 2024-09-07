@@ -8,6 +8,7 @@ import (
 	"github.com/cretz/bine/torutil/ed25519"
 
 	"github.com/kothawoc/kothawoc/internal/torutils"
+	"github.com/kothawoc/kothawoc/pkg/keytool"
 )
 
 func authCB(s ed25519.PublicKey) bool {
@@ -51,7 +52,10 @@ func server(tc *torutils.TorCon, key ed25519.PrivateKey) {
 
 func main() {
 
-	key := torutils.CreatePrivateKey()
+	//key := torutils.CreatePrivateKey()
+	kt := keytool.EasyEdKey{}
+	kt.GenerateKey()
+	key, _ := kt.TorPrivKey()
 	//	torutils.Main()
 	tc := torutils.NewTorCon(os.Getenv("PWD") + "/data/tor-data")
 

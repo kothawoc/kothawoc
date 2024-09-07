@@ -3,7 +3,7 @@ package peering
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"strings"
 	"time"
@@ -13,7 +13,6 @@ import (
 	nntpclient "github.com/kothawoc/go-nntp/client"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/messages"
-	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 /*
@@ -93,13 +92,13 @@ func (p *Peer) Worker() {
 						err := p.Client.Post(strings.NewReader(msg.RawMail()))
 						if err != nil {
 
-							log.Print(serr.Errorf("CLIENT POST Error cannot send attempting reconnect: [%v]\n", p.TorId))
+							slog.Info("CLIENT POST Error cannot send attempting reconnect", "torid", p.TorId)
 							p.Conn.Close()
 							p.Conn = nil
 						}
 					} else {
 
-						log.Print(serr.Errorf("CLIENT Error cannot send not connect: [%v]\n", p.TorId))
+						slog.Info("CLIENT Error cannot send not connect", "torid", p.TorId)
 					}
 				}
 
@@ -132,29 +131,29 @@ func (p *Peer) Connect() {
 		return
 	}
 
-	log.Print(serr.Errorf("CLIENT Dialing [%s]", p.TorId))
+	slog.Info("CLIENT Dialing", "torid", p.TorId)
 	conn, err := p.Tc.Dial("tcp", p.TorId+".onion:80")
 	//defer conn.Close()
 
-	log.Print(serr.Errorf("CLIENT Dialing response [%v][%v]", conn, err))
+	slog.Info("CLIENT Dialing response", "conn", conn, "error", err)
 	if err != nil {
 		time.Sleep(time.Second * 5)
-		log.Print(serr.Errorf("Error Dialer connect: [%v] try again.\n", err))
+		slog.Info("Error Dialer connect: try again.", "error", err)
 		//p.Cmd <- cmd
 		return
 		//return nil, err
 	}
 
 	authed, err := p.Tc.ClientHandshake(conn, p.Key, p.TorId)
-	log.Print(serr.Errorf("CLIENT Authed response [%v][%v]", authed, err))
+	slog.Info("CLIENT Authed response", "authed", authed, "error", err)
 	if err != nil {
-		log.Print(serr.Errorf("CLIENT Error Dialer connect: [%v]", err))
+		slog.Info("CLIENT Error Dialer connect", "error", err)
 		return
 		//return nil, err
 	}
 	if authed == nil {
 		conn.Close()
-		log.Print(serr.Errorf("CLIENT: Failed to handshake."))
+		slog.Info("CLIENT: Failed to handshake.")
 		return
 		//return nil, errors.New("Failed hanshake, signature didn't match.")
 	}
@@ -219,7 +218,7 @@ func (p *Peers) Worker() {
 						continue
 						//		return nil, err
 					}
-					log.Print(serr.Errorf("peerlist [%d][%s][%s][%s]", id, torid, pubkey, name))
+					slog.Info("peerlist", "id", id, "torid", torid, "pubkey", pubkey, "name", name)
 					conn, _ := NewPeer(p.Tc, p.Cmd, torid, p.Db, p.Key)
 					p.Conns[torid] = conn
 					p.Conns[torid].Cmd <- cmd
@@ -238,7 +237,7 @@ func (p *Peers) Worker() {
 				p.Conns[torid].Cmd <- cmd
 				delete(p.Conns, torid)
 				res, err := p.Db.Exec("DELETE FROM peers WHERE torid=?;", torid)
-				log.Print(serr.Errorf("TRY REMOVE PEER DELETE [%v][%v]", err, res))
+				slog.Info("TRY REMOVE PEER DELETE", "error", err, "res", res)
 				//if err != nil {
 				//	errChan <- err
 				//	continue
@@ -252,22 +251,22 @@ func (p *Peers) Worker() {
 
 				row := p.Db.QueryRow("SELECT id,torid,pubkey,name FROM peers WHERE torid=?;", torid)
 				err := row.Scan(&id, &torid, &pubkey, &name)
-				log.Print(serr.Errorf("ADDING PEER: [%s][%x] [%v]", torid, id, err))
+				slog.Info("ADDING PEER", "torid", torid, "id", id, "error", err)
 				if err != sql.ErrNoRows {
-					errChan <- fmt.Errorf("Peer already exists [%s]", torid)
+					errChan <- fmt.Errorf("Peer already exists %s=%s", "torid", torid)
 					continue
 				}
 
-				log.Print(serr.Errorf("Adding peer [%d][%s][%s][%s]", id, torid, pubkey, name))
+				slog.Info("Adding peer", "id", id, "torid", torid, "pubkey", pubkey, "name", name)
 				conn, err := NewPeer(p.Tc, p.Cmd, torid, p.Db, p.Key)
 
-				log.Print(serr.Errorf("ERROR ADDPEER [%v]", err))
+				slog.Info("ERROR ADDPEER", "error", err)
 				if err != nil {
 					errChan <- err
 					continue
 				}
 				res, err := p.Db.Exec("INSERT INTO peers(torid,pubkey,name) VALUES(?,\"tmp\",\"\");", torid)
-				log.Print(serr.Errorf("ERROR ADDPEER INSERT [%v][%v]", err, res))
+				slog.Info("ERROR ADDPEER INSERT", "error", err, "res", res)
 				if err != nil {
 					errChan <- err
 					continue

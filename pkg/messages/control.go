@@ -2,7 +2,7 @@ package messages
 
 import (
 	"bytes"
-	"log"
+	"log/slog"
 	"net/textproto"
 	"strings"
 	"time"
@@ -64,7 +64,7 @@ type ControMesasgeFunctions struct {
 // func CheckControl(msg *messages.MessageTool, newGroup func(name, description, flags string) error) bool {
 func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 
-	log.Print(serr.Errorf("CHECK CONTROL MESSAGE: [%s]", msg))
+	slog.Info("CHECK CONTROL MESSAGE: [%s]", msg)
 	if ctrl := msg.Article.Header.Get("Control"); ctrl != "" {
 		splitCtl := strings.Split(ctrl, " ")
 		switch splitCtl[0] {
@@ -80,7 +80,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 		//	5.3. The cancel Control Message ................................40
 		// rfc defined messages
 		case "cancel": // RFC 5537 - 5.3. The cancel Control Message
-			log.Print(serr.Errorf("Cancel"))
+			slog.Info("Cancel")
 
 			return cmf.Cancel(msg.Article.Header.Get("From"), splitCtl[1], msg.Article.Header.Get("Newsgroups"), cmf)
 
@@ -108,7 +108,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 					case "text/x-vcard;charset=UTF-8":
 						dec := vcard.NewDecoder(bytes.NewReader(h.Content))
 						card, _ = dec.Decode()
-						log.Print(serr.Errorf("card: [%#v]", card))
+						slog.Info("card: [%#v]", "card", card)
 					}
 
 				}
@@ -131,7 +131,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 		case "RemovePeer":
 		case "SetPerms":
 		default:
-			log.Print(serr.Errorf("ERROR CONTROL MESSAGE: [%s]", msg))
+			slog.Info("ERROR CONTROL MESSAGE: [%s]", msg)
 		}
 	}
 
