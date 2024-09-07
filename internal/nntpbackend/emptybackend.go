@@ -1,12 +1,11 @@
 package nntpbackend
 
 import (
-	"log"
+	"log/slog"
 
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
 	"github.com/kothawoc/kothawoc/internal/peering"
-	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 /*
@@ -40,48 +39,48 @@ type EmptyNntpBackend struct {
 
 func (be *EmptyNntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group, error) {
 
-	log.Print(serr.Errorf("E ListGroups"))
+	slog.Info("E ListGroups")
 	return nil, nntpserver.ErrNotAuthenticated
 }
 
 func (be *EmptyNntpBackend) GetGroup(session map[string]string, name string) (*nntp.Group, error) {
-	log.Print(serr.Errorf("E GetGroup"))
+	slog.Info("E GetGroup")
 	return nil, nntpserver.ErrNotAuthenticated
 
 }
 
 func (be *EmptyNntpBackend) GetArticleWithNoGroup(session map[string]string, id string) (*nntp.Article, error) {
 
-	log.Print(serr.Errorf("E GetArticleWithNoGroup"))
+	slog.Info("E GetArticleWithNoGroup")
 	return nil, nntpserver.ErrNotAuthenticated
 }
 func (be *EmptyNntpBackend) GetArticle(session map[string]string, group *nntp.Group, id string) (*nntp.Article, error) {
 
-	log.Print(serr.Errorf("E GetArticle"))
+	slog.Info("E GetArticle")
 	return nil, nntpserver.ErrNotAuthenticated
 }
 
 func (be *EmptyNntpBackend) GetArticles(session map[string]string, group *nntp.Group, from, to int64) (<-chan nntpserver.NumberedArticle, error) {
 
-	log.Print(serr.Errorf("E GetArticles"))
+	slog.Info("E GetArticles")
 	return nil, nntpserver.ErrNotAuthenticated
 }
 func (be *EmptyNntpBackend) Authorized(session map[string]string) bool {
-	log.Print(serr.Errorf("E Authorized"))
+	slog.Info("E Authorized")
 	return false
 }
 
 func (be *EmptyNntpBackend) Authenticate(usession map[string]string, ser, pass string) (nntpserver.Backend, error) {
-	log.Print(serr.Errorf("E Authenticate"))
+	slog.Info("E Authenticate")
 	return be.NextBackend, nil
 }
 
 func (be *EmptyNntpBackend) AllowPost(session map[string]string) bool {
-	log.Print(serr.Errorf("E AllowPost"))
+	slog.Info("E AllowPost")
 	return false
 }
 
 func (be *EmptyNntpBackend) Post(session map[string]string, article *nntp.Article) error {
-	log.Print(serr.Errorf("E Post"))
+	slog.Info("E Post")
 	return nntpserver.ErrNotAuthenticated
 }
