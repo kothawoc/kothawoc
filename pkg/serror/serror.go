@@ -35,6 +35,10 @@ func (e Serror) RuntimeName() string {
 func New(err error) error {
 	pc, fn, line, _ := runtime.Caller(1)
 
+	if err == nil {
+		return nil
+	}
+
 	return Serror{
 		err:         err,
 		runtimeName: runtime.FuncForPC(pc).Name(),
@@ -56,6 +60,9 @@ func Wrap(err1, err2 error) error {
 
 func Errorf(args ...any) error {
 	pc, fn, line, _ := runtime.Caller(1)
+	if len(args) == 1 && args[0] == nil {
+		return nil
+	}
 
 	format, ok := args[0].(string)
 	if !ok {

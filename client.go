@@ -33,7 +33,7 @@ type Client struct {
 	Tor        *torutils.TorCon
 }
 
-func NewClient(path string, port int) *Client {
+func NewClient(path string, port int) (*Client, error) {
 
 	tc := torutils.NewTorCon(path + "/data")
 	nntpBackend, _ := nntpbackend.NewNNTPBackend(path, tc)
@@ -50,12 +50,12 @@ func NewClient(path string, port int) *Client {
 		err = client.ConfigSet("deviceKey", deviceKey)
 		if err != nil {
 			log.Print(serr.Errorf("Error: %q", err))
-			return nil
+			return nil, serr.New(err)
 		}
 	}
 	if err != nil {
 		log.Print(serr.Errorf("Error: %q", err))
-		return nil
+		return nil, serr.New(err)
 	}
 
 	client.deviceKey = ed25519.PrivateKey(deviceKey)
@@ -73,7 +73,7 @@ func NewClient(path string, port int) *Client {
 	client.Dial()
 	client.CreateNewGroup("peers", "Control group for peering messages.", nntp.PostingPermitted)
 	//}()
-	return client
+	return client, nil
 }
 
 func (c *Client) DeviceKey() ed25519.PrivateKey {
@@ -84,7 +84,7 @@ func (c *Client) DeviceId() string {
 }
 
 func (c *Client) ConfigSet(key string, val interface{}) error {
-	return c.be.DBs.ConfigSet(key, val)
+	return serr.New(c.be.DBs.ConfigSet(key, val))
 }
 
 //func (c *Client) ConfigGet(key string, val interface{}) error {
@@ -92,7 +92,8 @@ func (c *Client) ConfigSet(key string, val interface{}) error {
 //}
 
 func (c *Client) ConfigGetInt64(key string) (int64, error) {
-	return c.be.DBs.ConfigGetInt64(key)
+	a, err := c.be.DBs.ConfigGetInt64(key)
+	return a, serr.New(err)
 }
 
 func (c *Client) ConfigGetGetBytes(key string) ([]byte, error) {
@@ -100,7 +101,8 @@ func (c *Client) ConfigGetGetBytes(key string) ([]byte, error) {
 }
 
 func (c *Client) ConfigGetString(key string) (string, error) {
-	return c.be.DBs.ConfigGetString(key)
+	a, err := c.be.DBs.ConfigGetString(key)
+	return a, serr.New(err)
 }
 
 func (c *Client) CreateNewGroup(name, description string, posting nntp.PostingStatus) error {
@@ -111,7 +113,7 @@ func (c *Client) CreateNewGroup(name, description string, posting nntp.PostingSt
 		return serr.New(err)
 	}
 
-	return c.NNTPclient.Post(strings.NewReader(mail))
+	return serr.New(c.NNTPclient.Post(strings.NewReader(mail)))
 }
 
 // func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, name string) (string, error) {
@@ -122,7 +124,7 @@ func (c *Client) AddPeer(torId string) error {
 		return serr.New(err)
 	}
 
-	return c.NNTPclient.Post(strings.NewReader(mail))
+	return serr.New(c.NNTPclient.Post(strings.NewReader(mail)))
 }
 
 // func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, name string) (string, error) {
@@ -134,7 +136,7 @@ func (c *Client) Post(mail *messages.MessageTool) error {
 		return serr.New(err)
 	}
 
-	return c.NNTPclient.Post(strings.NewReader(signedMail))
+	return serr.New(c.NNTPclient.Post(strings.NewReader(signedMail)))
 }
 
 func (c *Client) Dial() {
@@ -181,32 +183,42 @@ func (i GenIdType) GenID() string {
 
 var idGen GenIdType
 
-func (c *Client) tcpServer(s *nntpserver.Server, port int) {
+func (c *Client) tcpServer(s *nntpserver.Server, port int) error {
 	a, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
-	log.Printf("Error resolving listener: %v", serr.New(err))
+	if err != nil {
+		return serr.New(err)
+	}
+	log.Print(serr.Errorf("Error resolving listener: %v", serr.New(err)))
 	l, err := net.ListenTCP("tcp", a)
+	if err != nil {
+		l.Close()
+		return serr.New(err)
+	}
 	log.Printf("Error setting up listener: %v", serr.New(err))
 	defer l.Close()
 
 	for {
 		conn, err := l.AcceptTCP()
 
-		log.Printf("Error accepting connection: %v", serr.New(err))
+		log.Print(serr.Errorf("Error accepting connection: %v", serr.New(err)))
 		clientSession := nntpserver.ClientSession{
 			"Id":       c.deviceId,
 			"PubKey":   string(fmt.Sprintf("%x", c.deviceKey.PublicKey())),
 			"ConnMode": nntpbackend.ConnModeTcp,
 		}
 
-		log.Printf("clid stuff [%#v][%#v]", c.deviceId, idGen)
+		log.Print(serr.Errorf("clid stuff [%#v][%#v]", c.deviceId, idGen))
 		go s.Process(conn, clientSession)
 	}
 }
 
-func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
+func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 
 	log.Print(serr.Errorf("SERVER Starting: [%v]", tc))
-	onion, _ := tc.Listen(80, 0, c.deviceKey)
+	onion, err := tc.Listen(80, 0, c.deviceKey)
+	if err != nil {
+		return serr.New(err)
+	}
 	//	onion, _ := tc.Listen(80, 9980+rand.Intn(1000), c.deviceKey)
 
 	log.Print(serr.Errorf("SERVER Listening: [%v]", onion))
@@ -246,6 +258,7 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
 			authed, err := tc.ServerHandshake(conn, c.deviceKey, authCallback)
 			log.Print(serr.Errorf("SERVER AUTHed: [%v] [%v]\n", authed, err))
 			if err != nil {
+				conn.Close()
 				return
 			}
 			if authed == nil {
