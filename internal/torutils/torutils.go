@@ -13,6 +13,8 @@ import (
 	//"github.com/cretz/bine/process/embedded/tor-0.4.7"
 	"github.com/cretz/bine/tor"
 	"github.com/cretz/bine/torutil/ed25519"
+
+	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 func randomHexString(n int) string {
@@ -31,7 +33,7 @@ func readConnUntilLF(conn net.Conn) (string, error) {
 		n, err := conn.Read(tbuf)
 		//log.Printf("RTLF: [%n][%d][%s]\n", n, tbuf[0], string(tbuf[0]))
 		if err != nil {
-			log.Printf("RTL error [%v] size[%d], [%s]\n", err, n, rets)
+			log.Print(serr.Errorf("RTL error [%v] size[%d], [%s]\n", err, n, rets))
 			return rets, err
 		}
 		if tbuf[0] == '\n' {
@@ -41,7 +43,7 @@ func readConnUntilLF(conn net.Conn) (string, error) {
 			rets += string(tbuf)
 		}
 		if len(rets) > 1024 {
-			return rets, fmt.Errorf("READ CONN UNTIL LF OVERSIZE [%d]", len(rets))
+			return rets, serr.Errorf("READ CONN UNTIL LF OVERSIZE [%d]", len(rets))
 		}
 	}
 }
@@ -104,7 +106,7 @@ func (t *TorCon) ClientHandshake(conn net.Conn, privateKey ed25519.PrivateKey, r
 	if response == "OK" {
 		return serverPubKey, nil
 	}
-	return nil, fmt.Errorf("Error: server refused connection.")
+	return nil, serr.Errorf("Error: server refused connection.")
 }
 
 const (
@@ -112,96 +114,6 @@ const (
 	Ed25519publicKeySize  int = ed25519.PublicKeySize
 	Ed25519signatureSize  int = ed25519.SignatureSize
 )
-
-/*
-
-https://github.com/akamensky/golang-upgrade-tcp-to-tls/blob/master/client.go
-
-func generatePrivateKey() (*ecdsa.PrivateKey, error) {
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	return privateKey, nil
-}
-
-func generateSelfSignedCertificate(privateKey *ecdsa.PrivateKey) (*x509.Certificate, error) {
-	// Create a certificate template
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(0, 0, 365), // 1-year validity
-		Subject:      pkix.Name{Organization: []string{"Your Organization"}},
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IsCA:         true,
-	}
-
-	// Sign the certificate with the private key
-	certBytes, err := x509.CreateCertificate(rand.Reader, template, privateKey)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse the generated certificate
-	cert, err := x509.ParseCertificate(certBytes)
-	if err != nil {
-		return nil, err
-	}
-	return cert, nil
-}
-func encode(privateKey *ecdsa.PrivateKey, publicKey *ecdsa.PublicKey) (string, string) {
-	x509Encoded, _ := x509.MarshalECPrivateKey(privateKey)
-	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: x509Encoded})
-
-	x509EncodedPub, _ := x509.MarshalPKIXPublicKey(publicKey)
-	pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: x509EncodedPub})
-
-	return string(pemEncoded), string(pemEncodedPub)
-}
-
-func decode(pemEncoded string, pemEncodedPub string) (*ecdsa.PrivateKey, *ecdsa.PublicKey) {
-	block, _ := pem.Decode([]byte(pemEncoded))
-	x509Encoded := block.Bytes
-	privateKey, _ := x509.ParseECPrivateKey(x509Encoded)
-
-	blockPub, _ := pem.Decode([]byte(pemEncodedPub))
-	x509EncodedPub := blockPub.Bytes
-	genericPublicKey, _ := x509.ParsePKIXPublicKey(x509EncodedPub)
-	publicKey := genericPublicKey.(*ecdsa.PublicKey)
-
-	return privateKey, publicKey
-}
-
-func test() {
-	privateKey, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	publicKey := &privateKey.PublicKey
-
-	encPriv, encPub := encode(privateKey, publicKey)
-
-	fmt.Println(encPriv)
-	fmt.Println(encPub)
-
-	priv2, pub2 := decode(encPriv, encPub)
-
-	if !reflect.DeepEqual(privateKey, priv2) {
-		fmt.Println("Private keys do not match.")
-	}
-	if !reflect.DeepEqual(publicKey, pub2) {
-		fmt.Println("Public keys do not match.")
-	}
-}
-func secondmain() {
-	// Assume privateKey and cert are generated using the above functions
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{{
-			Certificate: [][]byte{cert.Raw},
-			PrivateKEY:  privateKey.Der(),
-		}},
-	}
-	http.ListenAndServeTLS(":8443", cert.Raw, privateKey.Der(), nil)
-}
-
-*/
 
 func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, authCallback func(clientPubKey ed25519.PublicKey) bool) (ed25519.PublicKey, error) {
 	// construct initial handshake
@@ -214,26 +126,26 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 	}
 	splitRequest := strings.Split(clientRequest, " ")
 	if len(splitRequest) != 4 {
-		return nil, fmt.Errorf("Error, handshake has wrong number of arguments.")
+		return nil, serr.Errorf("Error, handshake has wrong number of arguments.")
 	}
 	clientPubKey, _ := hex.DecodeString(string(splitRequest[0]))
 	//fmt.Printf("SERVER PUBKEYRECV: size[%d], hex[%s] decoded[%v]\n", len(splitRequest[0]), splitRequest[0], clientPubKey)
 	clientTorId := string(splitRequest[1])
 	if clientTorId != EncodePublicKey(clientPubKey) {
-		return nil, fmt.Errorf("Error: client TorId and pubkey don't match.")
+		return nil, serr.Errorf("Error: client TorId and pubkey don't match.")
 	}
 	// randomData, _ := hex.DecodeString(string(splitRequest[2]))
 	clientSig, _ := hex.DecodeString(string(splitRequest[3]))
 	clientMesg := strings.Join(splitRequest[:3], " ")
 	// check that the claimed client tor id matches the public key
 	if authCallback(clientPubKey) == false {
-		log.Printf("SERVER HANDSHAKE AUTH CALLBACK FAILED [%s]\n", clientMesg)
-		return nil, fmt.Errorf("Error: client TorId refused by callback.")
+		log.Print(serr.Errorf("SERVER HANDSHAKE AUTH CALLBACK FAILED [%s]\n", clientMesg))
+		return nil, serr.Errorf("Error: client TorId refused by callback.")
 	}
 	verified := ed25519.Verify(ed25519.PublicKey(clientPubKey), []byte(clientMesg), clientSig)
 	if verified == false {
-		log.Printf("SERVER HANDSHAKE AUTH SIGNATURE FAILED [%s]\n", clientMesg)
-		return nil, fmt.Errorf("Error: failed to verify client cert.")
+		log.Print(serr.Errorf("SERVER HANDSHAKE AUTH SIGNATURE FAILED [%s]\n", clientMesg))
+		return nil, serr.Errorf("Error: failed to verify client cert.")
 	}
 
 	// send response to client
@@ -252,16 +164,16 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 	clientRequest, err = readConnUntilLF(conn)
 	//log.Printf("SERVER HANDSHAKE RESPONSE FROM CLIENT: [%s]\n", clientRequest)
 	if err != nil {
-		return nil, err
+		return nil, serr.New(err)
 	}
 	clientSig, _ = hex.DecodeString(clientRequest)
 	verified = ed25519.Verify(clientPubKey, []byte(initialHandshake[:len(initialHandshake)-1]), clientSig)
 	if verified {
 		conn.Write([]byte("OK\n"))
-		log.Printf("Error: faied to verify server cert.")
+		log.Print(serr.Errorf("Error: faied to verify server cert."))
 		return clientPubKey, nil
 	}
-	return nil, fmt.Errorf("Error: failed to verify server cert.")
+	return nil, serr.Errorf("Error: failed to verify server cert.")
 }
 
 func (t *TorCon) Listen(torPort, localPort int, privateKey ed25519.PrivateKey) (*tor.OnionService, error) {
@@ -301,7 +213,7 @@ func NewTorCon(datadir string) *TorCon {
 	t, err := tor.Start(context.Background(), &tor.StartConf{DataDir: datadir})
 	if err != nil {
 		//panic(err)
-		log.Printf("Tor start Error: [%v]", err)
+		log.Print(serr.Errorf("Tor start Error: [%v]", err))
 		return nil
 	}
 
@@ -320,7 +232,7 @@ func NewTorCon(datadir string) *TorCon {
 		// Make connection
 		dialer, err := tc.t.Dialer(dialCtx, nil)
 		if err != nil {
-			log.Printf("Error Dialer setup: [%v]", err)
+			log.Print(serr.Errorf("Error Dialer setup: [%v]", err))
 			//return nil
 			return
 		}

@@ -19,6 +19,7 @@ import (
 	"github.com/cretz/bine/torutil/ed25519"
 	"github.com/kothawoc/go-nntp"
 	"github.com/kothawoc/kothawoc/internal/torutils"
+	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 /*
@@ -87,7 +88,7 @@ func (m *MessageTool) Sign(privateKey ed25519.PrivateKey) (string, error) {
 	signature := base32.StdEncoding.EncodeToString(ed25519.Sign(privateKey, []byte(data)))
 
 	os.WriteFile("sign.txt", []byte(data), 0600)
-	log.Printf("Signing message:--------------------------------\n%s\n---------------------------------Signature: [%s]", string(data), signature)
+	log.Print(serr.Errorf("Signing message:--------------------------------\n%s\n---------------------------------Signature: [%s]", string(data), signature))
 	(*m).Article.Header.Set(SignatureHeader, signature)
 	return m.writeRaw(false), nil
 }
@@ -98,24 +99,24 @@ func (m *MessageTool) RawMail() string {
 
 func (m *MessageTool) Verify() bool {
 	//sigPart := m.Parts[len(m.Parts)-1]
-	log.Printf("Verify:-------------------------------------------------------\n%s------------------------\n\n", m.writeRaw(true))
+	log.Print(serr.Errorf("Verify:-------------------------------------------------------\n%s------------------------\n\n", m.writeRaw(true)))
 
 	b32Signature := []byte(m.Article.Header.Get(SignatureHeader))
 
 	dst := make([]byte, 256)
 	n, err := base32.StdEncoding.Decode(dst, b32Signature)
 	if err != nil {
-		log.Printf("Failed to decode b32 signature.")
+		log.Print(serr.Errorf("Failed to decode b32 signature."))
 		return false
 	}
 	signature := dst[:n]
 
 	pubKey, err := hex.DecodeString(m.Article.Header.Get("Approved"))
 	if err != nil {
-		log.Printf("Failed to decode pubkey.")
+		log.Print(serr.Errorf("Failed to decode pubkey."))
 		return false
 	}
-	fmt.Printf("Checking Approved: [%s][%s]\n", pubKey, b32Signature)
+	log.Print(serr.Errorf("Checking Approved: [%s][%s]\n", pubKey, b32Signature))
 	os.WriteFile("verify.txt", []byte(m.writeRaw(true)), 0600)
 	verified := ed25519.Verify(ed25519.PublicKey(pubKey), []byte(m.writeRaw(true)), signature)
 	//verified = true
@@ -123,7 +124,7 @@ func (m *MessageTool) Verify() bool {
 }
 
 func (m *MessageTool) writeRaw(signing bool) string {
-	log.Printf("Write raw start [%v] and preamble:\n%s\n-------------------------\n", signing, m.Preamble)
+	log.Print(serr.Errorf("Write raw start [%v] and preamble:\n%s\n-------------------------\n", signing, m.Preamble))
 	// Buffer to store the email
 	var buf bytes.Buffer
 
@@ -132,7 +133,7 @@ func (m *MessageTool) writeRaw(signing bool) string {
 	//writer := buf
 	_, params, err := mime.ParseMediaType(m.Article.Header.Get("Content-Type"))
 	if err != nil {
-		log.Printf("Errored in parsing media type for stuff: [%v]:[%v]", err, m.Article.Header.Get("Content-Type"))
+		log.Print(serr.Errorf("Errored in parsing media type for stuff: [%v]:[%v]", err, m.Article.Header.Get("Content-Type")))
 		//		return ""
 	} else {
 		writer = multipart.NewWriter(&buf)
@@ -171,8 +172,9 @@ func (m *MessageTool) writeRaw(signing bool) string {
 		for _, part := range m.Parts {
 			partWriter, err := writer.CreatePart(part.Header)
 			if err != nil {
-				log.Fatal(err)
-				log.Printf("writeRaw partWriter error [%v", err)
+				//	log.Fatal(err)
+				log.Print(serr.Errorf("ERROR: writeRaw partWriter error [%v", err))
+				return ""
 			}
 			part.Content = []byte(strings.Replace(string(part.Content), "\r", "", -1))
 			partWriter.Write([]byte(strings.Replace(string(part.Content), "\n", "\r\n", -1)))
@@ -191,7 +193,7 @@ func (m *MessageTool) ParseBody() {
 	_, params, err := mime.ParseMediaType(m.Article.Header.Get("Content-Type"))
 	if err == nil {
 		hasMime = true
-		log.Printf("have mime")
+		log.Print(serr.Errorf("have mime"))
 	}
 
 	// Read the preamble manually
@@ -218,27 +220,27 @@ func (m *MessageTool) ParseBody() {
 		if err == io.EOF {
 			preamble.WriteString(line)
 
-			fmt.Println("READ 1 Preamble:")
-			fmt.Println(preamble.String())
+			//	fmt.Println("READ 1 Preamble:")
+			//	fmt.Println(preamble.String())
 			(*m).Preamble = preamble.String()
 			return
 		}
 		if err != nil {
 			preamble.WriteString(line)
-			fmt.Println("READ 2 Preamble:")
-			fmt.Println(preamble.String())
+			//	fmt.Println("READ 2 Preamble:")
+			//	fmt.Println(preamble.String())
 			m.Preamble = preamble.String()
 			return
 		}
 		if hasMime && strings.HasPrefix(line, "--"+params["boundary"]) {
 			reader = bufio.NewReader(io.MultiReader(strings.NewReader(line), reader))
 			// Print the preamble
-			fmt.Println("PREAD 3 reamble:")
-			fmt.Println(preamble.String())
+			//	fmt.Println("PREAD 3 reamble:")
+			//	fmt.Println(preamble.String())
 			m.Preamble = preamble.String()
 			if m.Preamble[len(m.Preamble)-1] == '\n' {
 				m.Preamble = m.Preamble[:len(m.Preamble)-1]
-				fmt.Printf("LOLZ 3 READ 2 Preamble: [%s] ||lolz", m.Preamble)
+				//		fmt.Printf("LOLZ 3 READ 2 Preamble: [%s] ||lolz", m.Preamble)
 			}
 
 			//fmt.Println("LOLZ READ 2 Preamble:||", m.Preamble, "||lolz")
@@ -251,12 +253,12 @@ func (m *MessageTool) ParseBody() {
 				part, err := mr.NextPart()
 				if err == io.EOF {
 
-					fmt.Printf("PREAD 4 parts reamble: [%#v][%s]", parts, parts)
+					//	fmt.Printf("PREAD 4 parts reamble: [%#v][%s]", parts, parts)
 					m.Parts = parts
 					return
 				}
 				if err != nil {
-					fmt.Printf("PREAD 5 parts reamble: [%v]", parts)
+					//	fmt.Printf("PREAD 5 parts reamble: [%v]", parts)
 
 					m.Parts = parts
 					return

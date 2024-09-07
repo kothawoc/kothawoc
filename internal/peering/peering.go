@@ -13,6 +13,7 @@ import (
 	nntpclient "github.com/kothawoc/go-nntp/client"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/messages"
+	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 /*
@@ -92,13 +93,13 @@ func (p *Peer) Worker() {
 						err := p.Client.Post(strings.NewReader(msg.RawMail()))
 						if err != nil {
 
-							log.Printf("CLIENT POST Error cannot send attempting reconnect: [%v]\n", p.TorId)
+							log.Print(serr.Errorf("CLIENT POST Error cannot send attempting reconnect: [%v]\n", p.TorId))
 							p.Conn.Close()
 							p.Conn = nil
 						}
 					} else {
 
-						log.Printf("CLIENT Error cannot send not connect: [%v]\n", p.TorId)
+						log.Print(serr.Errorf("CLIENT Error cannot send not connect: [%v]\n", p.TorId))
 					}
 				}
 
@@ -131,29 +132,29 @@ func (p *Peer) Connect() {
 		return
 	}
 
-	log.Printf("CLIENT Dialing [%s]", p.TorId)
+	log.Print(serr.Errorf("CLIENT Dialing [%s]", p.TorId))
 	conn, err := p.Tc.Dial("tcp", p.TorId+".onion:80")
 	//defer conn.Close()
 
-	log.Printf("CLIENT Dialing response [%v][%v]\n", conn, err)
+	log.Print(serr.Errorf("CLIENT Dialing response [%v][%v]", conn, err))
 	if err != nil {
 		time.Sleep(time.Second * 5)
-		log.Printf("Error Dialer connect: [%v] try again.\n", err)
+		log.Print(serr.Errorf("Error Dialer connect: [%v] try again.\n", err))
 		//p.Cmd <- cmd
 		return
 		//return nil, err
 	}
 
 	authed, err := p.Tc.ClientHandshake(conn, p.Key, p.TorId)
-	log.Printf("CLIENT Authed response [%v][%v]\n", authed, err)
+	log.Print(serr.Errorf("CLIENT Authed response [%v][%v]", authed, err))
 	if err != nil {
-		log.Printf("CLIENT Error Dialer connect: [%v]\n", err)
+		log.Print(serr.Errorf("CLIENT Error Dialer connect: [%v]", err))
 		return
 		//return nil, err
 	}
 	if authed == nil {
 		conn.Close()
-		log.Printf("CLIENT: Failed to handshake.\n")
+		log.Print(serr.Errorf("CLIENT: Failed to handshake."))
 		return
 		//return nil, errors.New("Failed hanshake, signature didn't match.")
 	}
@@ -218,7 +219,7 @@ func (p *Peers) Worker() {
 						continue
 						//		return nil, err
 					}
-					log.Printf("peerlist [%d][%s][%s][%s]", id, torid, pubkey, name)
+					log.Print(serr.Errorf("peerlist [%d][%s][%s][%s]", id, torid, pubkey, name))
 					conn, _ := NewPeer(p.Tc, p.Cmd, torid, p.Db, p.Key)
 					p.Conns[torid] = conn
 					p.Conns[torid].Cmd <- cmd
@@ -237,7 +238,7 @@ func (p *Peers) Worker() {
 				p.Conns[torid].Cmd <- cmd
 				delete(p.Conns, torid)
 				res, err := p.Db.Exec("DELETE FROM peers WHERE torid=?;", torid)
-				log.Printf("TRY REMOVE PEER DELETE [%v][%v]", err, res)
+				log.Print(serr.Errorf("TRY REMOVE PEER DELETE [%v][%v]", err, res))
 				//if err != nil {
 				//	errChan <- err
 				//	continue
@@ -251,22 +252,22 @@ func (p *Peers) Worker() {
 
 				row := p.Db.QueryRow("SELECT id,torid,pubkey,name FROM peers WHERE torid=?;", torid)
 				err := row.Scan(&id, &torid, &pubkey, &name)
-				log.Printf("ADDING PEER: [%s][%x] [%v]", torid, id, err)
+				log.Print(serr.Errorf("ADDING PEER: [%s][%x] [%v]", torid, id, err))
 				if err != sql.ErrNoRows {
 					errChan <- fmt.Errorf("Peer already exists [%s]", torid)
 					continue
 				}
 
-				log.Printf("Adding peer [%d][%s][%s][%s]", id, torid, pubkey, name)
+				log.Print(serr.Errorf("Adding peer [%d][%s][%s][%s]", id, torid, pubkey, name))
 				conn, err := NewPeer(p.Tc, p.Cmd, torid, p.Db, p.Key)
 
-				log.Printf("ERROR ADDPEER [%v]", err)
+				log.Print(serr.Errorf("ERROR ADDPEER [%v]", err))
 				if err != nil {
 					errChan <- err
 					continue
 				}
 				res, err := p.Db.Exec("INSERT INTO peers(torid,pubkey,name) VALUES(?,\"tmp\",\"\");", torid)
-				log.Printf("ERROR ADDPEER INSERT [%v][%v]", err, res)
+				log.Print(serr.Errorf("ERROR ADDPEER INSERT [%v][%v]", err, res))
 				if err != nil {
 					errChan <- err
 					continue

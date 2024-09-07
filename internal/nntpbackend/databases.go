@@ -18,6 +18,7 @@ import (
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
 	"github.com/kothawoc/kothawoc/pkg/messages"
+	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 type backendDbs struct {
@@ -98,12 +99,12 @@ func openCreateDB(path, sqlQuery string) (*sql.DB, error) {
 
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
-		return nil, err
+		return nil, serr.New(err)
 	}
 
 	if _, err := db.Exec(sqlQuery, t); err != nil {
-		log.Printf("FAILED Create DB database query [%v][%s][%s]", err, path, sqlQuery)
-		return nil, err
+		log.Print(serr.Errorf("FAILED Create DB database query [%v][%s][%s]", err, path, sqlQuery))
+		return nil, serr.New(err)
 	}
 
 	return db, nil
@@ -118,25 +119,25 @@ func NewBackendDBs(path string) (*backendDbs, error) {
 	//db, err := sql.Open("sqlite3", path+"/articles.db")
 	db, err := openCreateDB(path+"/articles.db", createArticlesDB)
 	if err != nil {
-		return nil, err
+		return nil, serr.New(err)
 	}
 	dbs.articles = db
 
 	db, err = openCreateDB(path+"/config.db", createConfigDB)
 	if err != nil {
-		return nil, err
+		return nil, serr.New(err)
 	}
 	dbs.config = db
 
 	db, err = openCreateDB(path+"/groups.db", createGroupsDB)
 	if err != nil {
-		return nil, err
+		return nil, serr.New(err)
 	}
 	dbs.groups = db
 
 	db, err = openCreateDB(path+"/peers.db", createPeersDB)
 	if err != nil {
-		return nil, err
+		return nil, serr.New(err)
 	}
 	dbs.peers = db
 
@@ -157,25 +158,25 @@ func (dbs *backendDbs) OpenGroups() error {
 
 	rows, err := dbs.groups.Query(groupsQuery)
 	if err != nil {
-		return err
+		return serr.New(err)
 	}
 
 	id := int64(0)
 	name := ""
 
-	log.Printf("EOpening groups do db stuff at ")
+	log.Print(serr.Errorf("EOpening groups do db stuff at "))
 	for rows.Next() {
 		err := rows.Scan(&id, &name)
 
-		log.Printf("Open grouplist [%d][%x][%s]", id, id, name)
+		log.Print(serr.Errorf("Open grouplist [%d][%x][%s]", id, id, name))
 		if err != nil {
-			return err
+			return serr.New(err)
 		}
 
 		db, err := sql.Open("sqlite3", fmt.Sprintf("%s/groups/%x.db", dbs.path, id))
 		if err != nil {
-			log.Printf("Error OpenGroup o do db stuff at [%v][%v]", db, err)
-			return err
+			log.Print(serr.Errorf("Error OpenGroup o do db stuff at [%v][%v]", db, err))
+			return serr.New(err)
 		}
 
 		dbs.groupArticles[name] = db
@@ -192,13 +193,13 @@ type PermissionsGroupT struct {
 }
 
 func (dbs *backendDbs) GetPerms(torid, group string) *PermissionsGroupT {
-	log.Printf("E GetPerms [%s] [%s]", torid, group)
+	log.Print(serr.Errorf("E GetPerms [%s] [%s]", torid, group))
 
 	p := &PermissionsGroupT{}
 
 	gs := strings.Split(group, ".")[0]
 	if gs == torid {
-		log.Printf("E GetPerms HERE BE GOD [%s] [%s]", torid, group)
+		log.Print(serr.Errorf("E GetPerms HERE BE GOD [%s] [%s]", torid, group))
 		return &PermissionsGroupT{
 			Read:      true,
 			Reply:     true,
@@ -212,7 +213,7 @@ func (dbs *backendDbs) GetPerms(torid, group string) *PermissionsGroupT {
 	id := int64(0)
 	err := row.Scan(&id)
 	if err != nil {
-		log.Printf("E GetPerms failgroup [%s] [%s] [%v]", torid, group, err)
+		log.Print(serr.Errorf("E GetPerms failgroup [%s] [%s] [%v]", torid, group, err))
 		return nil
 	}
 
@@ -223,7 +224,7 @@ func (dbs *backendDbs) GetPerms(torid, group string) *PermissionsGroupT {
 
 	err = row.Scan(&p.Read, &p.Reply, &p.Post, &p.Cancel, &p.Supersede)
 	if err != nil && err == sql.ErrNoRows {
-		log.Printf("E GetPerms fail get other siht [%s] [%s] [%v]", torid, group, err)
+		log.Print(serr.Errorf("E GetPerms fail get other siht [%s] [%s] [%v]", torid, group, err))
 		row = dbs.groupArticles[group].QueryRow("SELECT read,reply,post,cancel,supersede FROM perms WHERE torid=?;", "group")
 		err = row.Scan(&p.Read, &p.Reply, &p.Post, &p.Cancel, &p.Supersede)
 		if err == nil {
@@ -239,36 +240,36 @@ func (dbs *backendDbs) NewGroup(name, description string, card vcard.Card) error
 
 	res, err := dbs.groups.Exec("INSERT INTO groups(name) VALUES(?);", name)
 	if err != nil {
-		log.Printf("Error NewGroup INSERT to do db stuff at insert [%v]", err)
-		return err
+		log.Print(serr.Errorf("Error NewGroup INSERT to do db stuff at insert [%v]", err))
+		return serr.New(err)
 	}
 
 	groupId, err := res.LastInsertId()
 	if err != nil {
-		log.Printf("Error getting inserted rowid to do db stuff at last id [%v]", err)
-		return err
+		log.Print(serr.Errorf("Error getting inserted rowid to do db stuff at last id [%v]", err))
+		return serr.New(err)
 	}
 
-	log.Printf("Last inserted rowid to do db stuff at [%v]", groupId)
+	log.Print(serr.Errorf("Last inserted rowid to do db stuff at [%v]", groupId))
 
 	db, err := sql.Open("sqlite3", fmt.Sprintf("%s/groups/%x.db", dbs.path, groupId))
 	if err != nil {
-		log.Printf("Error opening NewGroup database id [%s][%v]", name, err)
-		return err
+		log.Print(serr.Errorf("Error opening NewGroup database id [%s][%v]", name, err))
+		return serr.New(err)
 	}
 
 	if msg, err := db.Exec(createArticleIndexDB); err != nil {
-		log.Printf("FAILED Create article index DB database query [%s][%v][%v] q[%s]", dbs.path, err, msg, createArticleIndexDB)
-		return err
+		log.Print(serr.Errorf("FAILED Create article index DB database query [%s][%v][%v] q[%s]", dbs.path, err, msg, createArticleIndexDB))
+		return serr.New(err)
 	}
 
 	if msg, err := db.Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", "description", description); err != nil {
-		log.Printf("FAILED Upserting group config value group:[%s] desc:[%s] err:[%v] resp[%v]", name, description, err, msg)
-		return err
+		log.Print(serr.Errorf("FAILED Upserting group config value group:[%s] desc:[%s] err:[%v] resp[%v]", name, description, err, msg))
+		return serr.New(err)
 	}
 	if msg, err := db.Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", "flags", "flags"); err != nil {
-		log.Printf("FAILED Upserting group config value group:[%s] desc:[%s] err:[%v] resp[%v]", name, description, err, msg)
-		return err
+		log.Print(serr.Errorf("FAILED Upserting group config value group:[%s] desc:[%s] err:[%v] resp[%v]", name, description, err, msg))
+		return serr.New(err)
 	}
 
 	for _, v := range card["X-KW-PERMS"] {
@@ -280,8 +281,8 @@ func (dbs *backendDbs) NewGroup(name, description string, card vcard.Card) error
 		supersede := v.Params.Get("SUPERSEDE") == "true"
 
 		if msg, err := db.Exec("INSERT OR REPLACE INTO perms (torid,read,reply,post,cancel,supersede) VALUES (?,?,?,?,?,?)", torid, read, reply, post, cancel, supersede); err != nil {
-			log.Printf("FAILED Upserting group config value group:[%s] desc:[%s] err:[%v] resp[%v]", name, description, err, msg)
-			return err
+			log.Print(serr.Errorf("FAILED Upserting group config value group:[%s] desc:[%s] err:[%v] resp[%v]", name, description, err, msg))
+			return serr.New(err)
 		}
 	}
 
@@ -296,14 +297,14 @@ func (dbs *backendDbs) GetArticleBySignature(signature string) (*nntp.Article, e
 
 	message, err := os.ReadFile(dbs.path + "/articles/" + signature)
 	if err != nil {
-		log.Printf("GetArticleBySignature [%v] ERROR ReadFile[%v]", signature, err)
-		return nil, err
+		log.Print(serr.Errorf("GetArticleBySignature [%v] ERROR ReadFile[%v]", signature, err))
+		return nil, serr.New(err)
 	}
 	body := (strings.SplitN(string(message), "\r\n\r\n", 2))[1]
 	msg, err := mail.ReadMessage(bytes.NewReader(message))
 	if err != nil {
-		log.Printf("GetArticleBySignature [%v] ERROR Processing message[%v]", signature, err)
-		return nil, err
+		log.Print(serr.Errorf("GetArticleBySignature [%v] ERROR Processing message[%v]", signature, err))
+		return nil, serr.New(err)
 	}
 
 	article := &nntp.Article{
@@ -317,7 +318,7 @@ func (dbs *backendDbs) GetArticleBySignature(signature string) (*nntp.Article, e
 
 func (dbs *backendDbs) GetArticleById(msgId string) (*nntp.Article, error) {
 
-	log.Printf("GetArticleById [%v]", msgId)
+	log.Print(serr.Errorf("GetArticleById [%v]", msgId))
 
 	row := dbs.articles.QueryRow("SELECT id, messageid, signature FROM articles WHERE messageid=?", msgId)
 
@@ -326,17 +327,17 @@ func (dbs *backendDbs) GetArticleById(msgId string) (*nntp.Article, error) {
 	signature := ""
 	err := row.Scan(&id, &messageid, &signature)
 	if err != nil {
-		log.Printf("GetArticleById Failed to open article final row scan [%s] [%v]", msgId, err)
-		return nil, nntpserver.ErrInvalidArticleNumber
+		log.Print(serr.Errorf("GetArticleById Failed to open article final row scan [%s] [%v]", msgId, err))
+		return nil, serr.New(nntpserver.ErrInvalidArticleNumber)
 	}
 
 	article, err := dbs.GetArticleBySignature(signature)
 	if err != nil {
-		log.Printf("GetArticleById Failed to get article by signature mid[%s] sig[%s] err[%v]", msgId, signature, err)
-		return nil, nntpserver.ErrInvalidArticleNumber
+		log.Print(serr.Errorf("GetArticleById Failed to get article by signature mid[%s] sig[%s] err[%v]", msgId, signature, err))
+		return nil, serr.New(nntpserver.ErrInvalidArticleNumber)
 	}
 
-	log.Printf("GetArticle By Id return [%v] [%v]", article, err)
+	log.Print(serr.Errorf("GetArticle By Id return [%v] [%v]", article, err))
 
 	return article, nil
 }
@@ -355,20 +356,20 @@ func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string, cmf message
 	// remove the message
 	article, err := dbs.GetArticleById(msgId)
 	if err != nil {
-		log.Printf("CancelMessage [%v] ERROR GetArticleById[%v]", msgId, err)
-		return err
+		log.Print(serr.Errorf("CancelMessage [%v] ERROR GetArticleById[%v]", msgId, err))
+		return serr.New(err)
 	}
 
 	if article.Header.Get("From") != from {
-		log.Printf("CancelMessage [%v] ERROR from doesn't match article.", from)
-		return fmt.Errorf("Cancel message from doesn't match article cancelMsg[%] article[%]", from, article.Header.Get("From"))
+		log.Print(serr.Errorf("CancelMessage [%v] ERROR from doesn't match article.", from))
+		return serr.Errorf("Cancel message from doesn't match article cancelMsg[%v] article[%v]", from, article.Header.Get("From"))
 	}
 
 	signature := article.Header.Get(messages.SignatureHeader)
 	msgGroups := strings.Split(article.Header.Get("Newsgroups"), ",")
 	delGroups := strings.Split(newsgroups, ",")
 
-	log.Printf("CancelMessage [%v]", msgGroups)
+	log.Print(serr.Errorf("CancelMessage [%v]", msgGroups))
 
 	for _, grp := range delGroups {
 		// if the message is actually in the group that they want to delete
@@ -384,8 +385,8 @@ func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string, cmf message
 				err := cmf.RemovePeer(peerId)
 				if err != nil {
 
-					log.Printf("CancelMessage: Failed to remove peer [%v] [%s]", err, peerId)
-					return err
+					log.Print(serr.Errorf("CancelMessage: Failed to remove peer [%v] [%s]", err, peerId))
+					return serr.New(err)
 				}
 			}
 
@@ -397,36 +398,36 @@ func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string, cmf message
 
 			_, err = dbs.groupArticles[grp].Exec("DELETE FROM articles WHERE messageid=?;", msgId)
 			if err != nil {
-				log.Printf("CancelMessage: Ouch def Error insert article to do db stuff at [%v] [%s]", err, msgId)
-				return err
+				log.Print(serr.Errorf("CancelMessage: Ouch def Error insert article to do db stuff at [%v] [%s]", err, msgId))
+				return serr.New(err)
 			} else {
-				log.Printf("CancelMessage: SUCCESS  insert article to do db stuff at [%v] [%s]", err, msgId)
+				log.Print(serr.Errorf("CancelMessage: SUCCESS  insert article to do db stuff at [%v] [%s]", err, msgId))
 			}
 
 			row := dbs.articles.QueryRow("UPDATE articles SET refs=refs - 1 WHERE messageid=? RETURNING refs;", msgId)
 			refs := int64(0)
 			err = row.Scan(&refs)
 			if err != nil {
-				log.Printf("CancelMessage: Ouch update refs def Error insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id"))
-				return err
+				log.Print(serr.Errorf("CancelMessage: Ouch update refs def Error insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id")))
+				return serr.New(err)
 			} else {
-				log.Printf("CancelMessage: SUCCESS update refs insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id"))
+				log.Print(serr.Errorf("CancelMessage: SUCCESS update refs insert article to do db stuff at [%v] [%s]", err, article.Header.Get("Message-Id")))
 			}
 
 			if refs == 0 {
 				// delete the article off disc
 				err := os.Remove(dbs.path + "/articles/" + signature)
 				if err != nil {
-					log.Printf("CancelMessage: Error[%v] id[%s] sig[%s]", err, msgId, signature)
-					return err
+					log.Print(serr.Errorf("CancelMessage: Error[%v] id[%s] sig[%s]", err, msgId, signature))
+					return serr.New(err)
 				}
 
 				_, err = dbs.articles.Exec("DELETE articles WHERE messageid=?;", msgId)
 				if err != nil {
-					log.Printf("CancelMessage: Delete from main DB Error[%v] id[%s] sig[%s]", err, msgId, signature)
-					return err
+					log.Print(serr.Errorf("CancelMessage: Delete from main DB Error[%v] id[%s] sig[%s]", err, msgId, signature))
+					return serr.New(err)
 				} else {
-					log.Printf("CancelMessage: SUCCESS from main DB Error[%v] id[%s] sig[%s]", err, msgId, signature)
+					log.Print(serr.Errorf("CancelMessage: SUCCESS from main DB Error[%v] id[%s] sig[%s]", err, msgId, signature))
 				}
 			}
 
@@ -441,27 +442,27 @@ func (dbs *backendDbs) OpenArticlesDB(id int) (*sql.DB, error) {
 
 	db, err := sql.Open("sqlite3", fmt.Sprintf("%s/groups/%x.db", dbs.path, id))
 	if err != nil {
-		log.Printf("FAILED Open OpenArticleDB Failed [%d] [%#v]", id, err)
-		return nil, err
+		log.Print(serr.Errorf("FAILED Open OpenArticleDB Failed [%d] [%#v]", id, err))
+		return nil, serr.New(err)
 	}
 
 	if msg, err := db.Exec(createArticlesDB); err != nil {
-		log.Printf("FAILED Create DB OpenArticleDB QUERY [%d] [%#v] [%#v]", id, err, msg)
-		return db, err
+		log.Print(serr.Errorf("FAILED Create DB OpenArticleDB QUERY [%d] [%#v] [%#v]", id, err, msg))
+		return db, serr.New(err)
 	} else {
-		log.Printf("SUCCESS Create DB OpenArticleDB QUERY [%d] [%#v] [%#v]", id, err, msg)
+		log.Print(serr.Errorf("SUCCESS Create DB OpenArticleDB QUERY [%d] [%#v] [%#v]", id, err, msg))
 	}
 
-	log.Printf("OpenArticleDB SUCCESS [%d]", id)
+	log.Print(serr.Errorf("OpenArticleDB SUCCESS [%d]", id))
 
 	return db, nil
 }
 
 func (dbs *backendDbs) ConfigSet(key string, val interface{}) error {
-	log.Printf("Attempting to uupsert key[%#v] val[%#v]", key, val)
+	log.Print(serr.Errorf("Attempting to uupsert key[%#v] val[%#v]", key, val))
 	if msg, err := dbs.config.Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", key, val); err != nil {
-		log.Printf("FAILED Upserting config value [%s][%v][%v] q[%s]", dbs.path, err, msg, createArticleIndexDB)
-		return err
+		log.Print(serr.Errorf("FAILED Upserting config value [%s][%v][%v] q[%s]", dbs.path, err, msg, createArticleIndexDB))
+		return serr.New(err)
 	}
 	return nil
 }
@@ -469,22 +470,26 @@ func (dbs *backendDbs) ConfigSet(key string, val interface{}) error {
 func (dbs *backendDbs) ConfigGetInt64(key string) (int64, error) {
 	rows := dbs.config.QueryRow("SELECT val FROM config WHERE key=?", key)
 	val := int64(0)
-	err := rows.Scan(&val)
-	return val, err
+	if err := rows.Scan(&val); err != nil {
+		return val, serr.New(err)
+	}
+	return val, nil
 }
 
 func (dbs *backendDbs) ConfigGetGetBytes(key string) ([]byte, error) {
 	rows := dbs.config.QueryRow("SELECT val FROM config WHERE key=?", key)
 	val := []byte{}
-	err := rows.Scan(&val)
-
-	return val, err
+	if err := rows.Scan(&val); err != nil {
+		return val, serr.New(err)
+	}
+	return val, nil
 }
 
 func (dbs *backendDbs) ConfigGetString(key string) (string, error) {
 	rows := dbs.config.QueryRow("SELECT val FROM config WHERE key=?", key)
 	val := string("")
-	err := rows.Scan(&val)
-
-	return val, err
+	if err := rows.Scan(&val); err != nil {
+		return val, serr.New(err)
+	}
+	return val, nil
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/kothawoc/kothawoc/internal/nntpbackend"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/messages"
+	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 type Client struct {
@@ -48,12 +49,12 @@ func NewClient(path string, port int) *Client {
 		deviceKey = client.CreatePrivateKey()
 		err = client.ConfigSet("deviceKey", deviceKey)
 		if err != nil {
-			log.Printf("Error: Cannot create device key: [%v]\n", err)
+			log.Print(serr.Errorf("Error: %q", err))
 			return nil
 		}
 	}
 	if err != nil {
-		log.Printf("Error: Cannot get device key: [%v]\n", err)
+		log.Print(serr.Errorf("Error: %q", err))
 		return nil
 	}
 
@@ -105,9 +106,9 @@ func (c *Client) ConfigGetString(key string) (string, error) {
 func (c *Client) CreateNewGroup(name, description string, posting nntp.PostingStatus) error {
 	// TODO,
 	mail, err := messages.CreateNewsGroupMail(c.deviceKey, idGen, name, description, nil, posting)
-	log.Printf("New group mail err[%v]:=====================\n%s\n===================\n", err, mail)
+	//log.Printf("New group mail err[%v]:=====================\n%s\n===================\n", err, mail)
 	if err != nil {
-		return err
+		return serr.New(err)
 	}
 
 	return c.NNTPclient.Post(strings.NewReader(mail))
@@ -116,9 +117,9 @@ func (c *Client) CreateNewGroup(name, description string, posting nntp.PostingSt
 // func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, name string) (string, error) {
 func (c *Client) AddPeer(torId string) error {
 	mail, err := messages.CreatePeeringMail(c.deviceKey, idGen, torId)
-	log.Printf("New peering mail err[%v]:=====================\n%s\n===================\n", err, mail)
+	//log.Printf("New peering mail err[%v]:=====================\n%s\n===================\n", err, mail)
 	if err != nil {
-		return err
+		return serr.New(err)
 	}
 
 	return c.NNTPclient.Post(strings.NewReader(mail))
@@ -128,9 +129,9 @@ func (c *Client) AddPeer(torId string) error {
 func (c *Client) Post(mail *messages.MessageTool) error {
 	mail.Article.Header.Set("Message-id", idGen.GenID())
 	signedMail, err := mail.Sign(c.deviceKey)
-	log.Printf("New peering mail err[%v]:=====================\n%s\n===================\n", err, mail)
+	//log.Printf("New peering mail err[%v]:=====================\n%s\n===================\n", err, mail)
 	if err != nil {
-		return err
+		return serr.New(err)
 	}
 
 	return c.NNTPclient.Post(strings.NewReader(signedMail))
@@ -182,15 +183,15 @@ var idGen GenIdType
 
 func (c *Client) tcpServer(s *nntpserver.Server, port int) {
 	a, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
-	log.Printf("Error resolving listener: %v", err)
+	log.Printf("Error resolving listener: %v", serr.New(err))
 	l, err := net.ListenTCP("tcp", a)
-	log.Printf("Error setting up listener: %v", err)
+	log.Printf("Error setting up listener: %v", serr.New(err))
 	defer l.Close()
 
 	for {
 		conn, err := l.AcceptTCP()
 
-		log.Printf("Error accepting connection: %v", err)
+		log.Printf("Error accepting connection: %v", serr.New(err))
 		clientSession := nntpserver.ClientSession{
 			"Id":       c.deviceId,
 			"PubKey":   string(fmt.Sprintf("%x", c.deviceKey.PublicKey())),
@@ -204,17 +205,17 @@ func (c *Client) tcpServer(s *nntpserver.Server, port int) {
 
 func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
 
-	fmt.Printf("SERVER Starting: [%v]\n", tc)
+	log.Print(serr.Errorf("SERVER Starting: [%v]", tc))
 	onion, _ := tc.Listen(80, 0, c.deviceKey)
 	//	onion, _ := tc.Listen(80, 9980+rand.Intn(1000), c.deviceKey)
 
-	fmt.Printf("SERVER Listening: [%v]\n", onion)
+	log.Print(serr.Errorf("SERVER Listening: [%v]", onion))
 	//defer listenCancel()
 	for {
 		conn, err := onion.Accept()
-		fmt.Printf("SERVER Accept: [%v]\n", onion)
+		log.Print(serr.Errorf("SERVER Accept: [%v]\n", onion))
 		if err != nil {
-			fmt.Printf("SERVER ERROR Accept: [%v] [%v]\n", onion, err)
+			log.Print(serr.Errorf("SERVER ERROR Accept: [%v] [%v]\n", onion, err))
 			continue
 		}
 		go func() {
@@ -227,12 +228,12 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
 				row := c.be.Peers.Db.QueryRow("SELECT COUNT(*) FROM peers WHERE torid=?", torutils.EncodePublicKey(clientPubKey))
 				err := row.Scan(&match)
 				if err != nil {
-					log.Printf("Dodgy hacky auth FAILED for [%s]", torutils.EncodePublicKey(clientPubKey))
+					log.Print(serr.Errorf("Dodgy hacky auth FAILED for [%s]", torutils.EncodePublicKey(clientPubKey)))
 					return false
 
 				}
 				if match == 1 {
-					log.Printf("Dodgy hacky auth accepted for [%s]", torutils.EncodePublicKey(clientPubKey))
+					log.Print(serr.Errorf("Dodgy hacky auth accepted for [%s]", torutils.EncodePublicKey(clientPubKey)))
 					return true
 				}
 				// if clientPubKey == getPeer {
@@ -243,7 +244,7 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
 			}
 
 			authed, err := tc.ServerHandshake(conn, c.deviceKey, authCallback)
-			fmt.Printf("SERVER AUTHed: [%v] [%v]\n", authed, err)
+			log.Print(serr.Errorf("SERVER AUTHed: [%v] [%v]\n", authed, err))
 			if err != nil {
 				return
 			}
@@ -258,9 +259,9 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) {
 				"ConnMode": nntpbackend.ConnModeTor,
 			}
 
-			log.Printf("tor connection stuff [%#v][%#v]", c.deviceId, idGen)
+			log.Print(serr.Errorf("tor connection stuff [%#v][%#v]", c.deviceId, idGen))
 			s.Process(conn, clientSession)
-			log.Printf("tor disconnection stuff [%#v][%#v]", c.deviceId, idGen)
+			log.Print(serr.Errorf("tor disconnection stuff [%#v][%#v]", c.deviceId, idGen))
 			/*
 				TODO: fix the client stuff
 				2024/08/31 09:21:39 Error reading from client, dropping conn: EOF

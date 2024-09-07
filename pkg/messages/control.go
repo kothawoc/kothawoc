@@ -14,6 +14,7 @@ import (
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
 	"github.com/kothawoc/kothawoc/internal/torutils"
+	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 /*
@@ -63,7 +64,7 @@ type ControMesasgeFunctions struct {
 // func CheckControl(msg *messages.MessageTool, newGroup func(name, description, flags string) error) bool {
 func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 
-	log.Printf("CHECK CONTROL MESSAGE: [%s]", msg)
+	log.Print(serr.Errorf("CHECK CONTROL MESSAGE: [%s]", msg))
 	if ctrl := msg.Article.Header.Get("Control"); ctrl != "" {
 		splitCtl := strings.Split(ctrl, " ")
 		switch splitCtl[0] {
@@ -79,7 +80,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 		//	5.3. The cancel Control Message ................................40
 		// rfc defined messages
 		case "cancel": // RFC 5537 - 5.3. The cancel Control Message
-			log.Printf("Cancel\n")
+			log.Print(serr.Errorf("Cancel"))
 
 			return cmf.Cancel(msg.Article.Header.Get("From"), splitCtl[1], msg.Article.Header.Get("Newsgroups"), cmf)
 
@@ -107,7 +108,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 					case "text/x-vcard;charset=UTF-8":
 						dec := vcard.NewDecoder(bytes.NewReader(h.Content))
 						card, _ = dec.Decode()
-						log.Printf("card: [%#v]", card)
+						log.Print(serr.Errorf("card: [%#v]", card))
 					}
 
 				}
@@ -130,7 +131,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 		case "RemovePeer":
 		case "SetPerms":
 		default:
-			log.Printf("ERROR CONTROL MESSAGE: [%s]", msg)
+			log.Print(serr.Errorf("ERROR CONTROL MESSAGE: [%s]", msg))
 		}
 	}
 

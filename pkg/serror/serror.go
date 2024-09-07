@@ -54,9 +54,19 @@ func Wrap(err1, err2 error) error {
 	}
 }
 
-func Errorf(format string, args ...any) error {
+func Errorf(args ...any) error {
 	pc, fn, line, _ := runtime.Caller(1)
 
+	format, ok := args[0].(string)
+	if !ok {
+		return Serror{
+			err:         fmt.Errorf("Error making error[%q]", args),
+			runtimeName: runtime.FuncForPC(pc).Name(),
+			function:    fn,
+			line:        line,
+		}
+	}
+	args = args[1:]
 	return Serror{
 		err:         fmt.Errorf(format, args...),
 		runtimeName: runtime.FuncForPC(pc).Name(),

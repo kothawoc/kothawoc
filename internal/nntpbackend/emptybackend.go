@@ -6,6 +6,7 @@ import (
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
 	"github.com/kothawoc/kothawoc/internal/peering"
+	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 /*
@@ -39,47 +40,48 @@ type EmptyNntpBackend struct {
 
 func (be *EmptyNntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group, error) {
 
-	log.Printf("E ListGroups")
+	log.Print(serr.Errorf("E ListGroups"))
 	return nil, nntpserver.ErrNotAuthenticated
 }
 
 func (be *EmptyNntpBackend) GetGroup(session map[string]string, name string) (*nntp.Group, error) {
-	log.Printf("E GetGroup")
+	log.Print(serr.Errorf("E GetGroup"))
 	return nil, nntpserver.ErrNotAuthenticated
 
 }
 
 func (be *EmptyNntpBackend) GetArticleWithNoGroup(session map[string]string, id string) (*nntp.Article, error) {
 
-	log.Printf("E GetArticleWithNoGroup")
+	log.Print(serr.Errorf("E GetArticleWithNoGroup"))
 	return nil, nntpserver.ErrNotAuthenticated
 }
 func (be *EmptyNntpBackend) GetArticle(session map[string]string, group *nntp.Group, id string) (*nntp.Article, error) {
 
-	log.Printf("E GetArticle")
+	log.Print(serr.Errorf("E GetArticle"))
 	return nil, nntpserver.ErrNotAuthenticated
 }
 
 func (be *EmptyNntpBackend) GetArticles(session map[string]string, group *nntp.Group, from, to int64) (<-chan nntpserver.NumberedArticle, error) {
 
-	log.Printf("E GetArticles")
+	log.Print(serr.Errorf("E GetArticles"))
 	return nil, nntpserver.ErrNotAuthenticated
 }
 func (be *EmptyNntpBackend) Authorized(session map[string]string) bool {
-	log.Printf("E Authorized")
+	log.Print(serr.Errorf("E Authorized"))
 	return false
 }
 
 func (be *EmptyNntpBackend) Authenticate(usession map[string]string, ser, pass string) (nntpserver.Backend, error) {
-	log.Printf("E Authenticate")
+	log.Print(serr.Errorf("E Authenticate"))
 	return be.NextBackend, nil
 }
 
 func (be *EmptyNntpBackend) AllowPost(session map[string]string) bool {
+	log.Print(serr.Errorf("E AllowPost"))
 	return false
 }
 
 func (be *EmptyNntpBackend) Post(session map[string]string, article *nntp.Article) error {
-	log.Printf("E Post")
+	log.Print(serr.Errorf("E Post"))
 	return nntpserver.ErrNotAuthenticated
 }
