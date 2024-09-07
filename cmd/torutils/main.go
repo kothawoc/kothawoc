@@ -15,7 +15,7 @@ func authCB(s ed25519.PublicKey) bool {
 }
 
 func server(tc *torutils.TorCon, key ed25519.PrivateKey) {
-	onion, _ := tc.Listen(80, 9980, key)
+	onion, _ := tc.Listen(80, key)
 
 	fmt.Printf("SERVER Listening: [%v]\n", onion)
 	//defer listenCancel()

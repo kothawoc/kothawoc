@@ -1,12 +1,7 @@
 package torutils
 
 import (
-	"bytes"
-	"encoding/base32"
-	"strings"
-
 	"github.com/cretz/bine/torutil/ed25519"
-	"golang.org/x/crypto/sha3"
 )
 
 func CreatePrivateKey() ed25519.PrivateKey {
@@ -18,6 +13,7 @@ func CreatePrivateKey() ed25519.PrivateKey {
 	return returnKey
 }
 
+/*
 func EncodePublicKey(publicKey ed25519.PublicKey) string {
 
 	// checksum = H(".onion checksum" || pubkey || version)
@@ -37,7 +33,7 @@ func EncodePublicKey(publicKey ed25519.PublicKey) string {
 	return strings.ToLower(onionAddress)
 
 }
-
+*/
 func Sign(privateKey ed25519.PrivateKey, data []byte) []byte {
 	return ed25519.Sign(privateKey, data)
 }

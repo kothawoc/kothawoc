@@ -20,6 +20,7 @@ import (
 	nntpserver "github.com/kothawoc/go-nntp/server"
 	"github.com/kothawoc/kothawoc/internal/peering"
 	"github.com/kothawoc/kothawoc/internal/torutils"
+	"github.com/kothawoc/kothawoc/pkg/keytool"
 	"github.com/kothawoc/kothawoc/pkg/messages"
 	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
@@ -359,7 +360,15 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 	}
 
 	deviceKey, _ := be.DBs.ConfigGetGetBytes("deviceKey")
-	torId := torutils.EncodePublicKey(ed25519.PrivateKey(deviceKey).PublicKey())
+
+	//	torId := torutils.EncodePublicKey(ed25519.PrivateKey(deviceKey).PublicKey())
+	myKey := keytool.EasyEdKey{}
+	myKey.SetTorPrivateKey(ed25519.PrivateKey(deviceKey))
+	torId, err := myKey.TorId()
+	if err != nil {
+		return nntpserver.ErrPostingFailed
+	}
+
 	path := msg.Article.Header.Get("Path")
 	if session["ConnMode"] == ConnModeTcp ||
 		session["ConnMode"] == ConnModeLocal {

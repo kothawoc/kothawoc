@@ -18,7 +18,7 @@ import (
 
 	"github.com/cretz/bine/torutil/ed25519"
 	"github.com/kothawoc/go-nntp"
-	"github.com/kothawoc/kothawoc/internal/torutils"
+	"github.com/kothawoc/kothawoc/pkg/keytool"
 	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
@@ -83,7 +83,10 @@ type MessageTool struct {
 
 func (m *MessageTool) Sign(privateKey ed25519.PrivateKey) (string, error) {
 	(*m).Article.Header.Set("Approved", hex.EncodeToString(privateKey.PublicKey()))
-	(*m).Article.Header.Set("From", torutils.EncodePublicKey(privateKey.PublicKey()))
+	myKey := keytool.EasyEdKey{}
+	myKey.SetTorPrivateKey(privateKey)
+	torId, _ := myKey.TorId()
+	(*m).Article.Header.Set("From", torId)
 	data := m.writeRaw(true)
 	signature := base32.StdEncoding.EncodeToString(ed25519.Sign(privateKey, []byte(data)))
 

@@ -14,6 +14,7 @@ import (
 	"github.com/cretz/bine/tor"
 	"github.com/cretz/bine/torutil/ed25519"
 
+	"github.com/kothawoc/kothawoc/pkg/keytool"
 	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
@@ -71,7 +72,13 @@ func (t *TorCon) ClientHandshake(conn net.Conn, privateKey ed25519.PrivateKey, r
 	// construct initial handshake
 	hexPublicKey := hex.EncodeToString([]byte(privateKey.PublicKey()))
 	//log.Printf("Client public key: size[%d] content[%s]", len([]byte(ed25519.PublicKey(privateKey))), []byte(ed25519.PublicKey(privateKey)))
-	torId := EncodePublicKey([]byte(privateKey.PublicKey()))
+
+	//torId := EncodePublicKey([]byte(privateKey.PublicKey()))
+
+	myKey := keytool.EasyEdKey{}
+	myKey.SetTorPrivateKey(ed25519.PrivateKey(privateKey))
+	//torId, err := keytool.EncodePublicKey([]byte(privateKey.PublicKey()))
+	torId, err := myKey.TorId()
 	initialHandshake := hexPublicKey + " " + torId + " " + randomHexString(32)
 	initialHandshake += " " + hex.EncodeToString(ed25519.Sign(privateKey, []byte(initialHandshake))) + "\n"
 	//log.Printf("CLIENT HANDSHAKE SEND TO SERVER: ", initialHandshake)
@@ -131,7 +138,11 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 	clientPubKey, _ := hex.DecodeString(string(splitRequest[0]))
 	//fmt.Printf("SERVER PUBKEYRECV: size[%d], hex[%s] decoded[%v]\n", len(splitRequest[0]), splitRequest[0], clientPubKey)
 	clientTorId := string(splitRequest[1])
-	if clientTorId != EncodePublicKey(clientPubKey) {
+
+	cliKey := keytool.EasyEdKey{}
+	cliKey.SetTorPublicKey(clientPubKey)
+	keyTorId, _ := cliKey.TorId()
+	if clientTorId != keyTorId {
 		return nil, serr.Errorf("Error: client TorId and pubkey don't match.")
 	}
 	// randomData, _ := hex.DecodeString(string(splitRequest[2]))
@@ -150,7 +161,11 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 
 	// send response to client
 	hexPublicKey := hex.EncodeToString([]byte(privateKey.PublicKey()))
-	torId := EncodePublicKey([]byte(privateKey.PrivateKey()))
+
+	myKey := keytool.EasyEdKey{}
+	myKey.SetTorPrivateKey(privateKey.PrivateKey())
+	torId, _ := cliKey.TorId()
+	//torId := EncodePublicKey([]byte(privateKey.PrivateKey()))
 	initialHandshake := hexPublicKey + " " + torId + " " + randomHexString(32)
 	serverSpecialMesg := initialHandshake + " " + clientRequest
 	//log.Printf("SERVER SPECIAL MESSAGE VERSION [%s]\n", serverSpecialMesg)
@@ -176,7 +191,7 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 	return nil, serr.Errorf("Error: failed to verify server cert.")
 }
 
-func (t *TorCon) Listen(torPort, localPort int, privateKey ed25519.PrivateKey) (*tor.OnionService, error) {
+func (t *TorCon) Listen(torPort int, privateKey ed25519.PrivateKey) (*tor.OnionService, error) {
 
 	// Wait at most a few minutes to publish the service
 	listenCtx, _ := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -198,9 +213,9 @@ func (t *TorCon) Listen(torPort, localPort int, privateKey ed25519.PrivateKey) (
 func (t *TorCon) Dial(proto, remote string) (net.Conn, error) {
 	if t.dialer != nil {
 		conn, err := t.dialer.Dial(proto, remote)
-		return conn, err
+		return conn, serr.New(err)
 	} else {
-		return nil, net.ErrClosed
+		return nil, serr.New(net.ErrClosed)
 	}
 }
 

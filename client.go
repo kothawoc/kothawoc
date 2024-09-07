@@ -19,6 +19,7 @@ import (
 	nntpserver "github.com/kothawoc/go-nntp/server"
 	"github.com/kothawoc/kothawoc/internal/nntpbackend"
 	"github.com/kothawoc/kothawoc/internal/torutils"
+	"github.com/kothawoc/kothawoc/pkg/keytool"
 	"github.com/kothawoc/kothawoc/pkg/messages"
 	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
@@ -59,7 +60,15 @@ func NewClient(path string, port int) (*Client, error) {
 	}
 
 	client.deviceKey = ed25519.PrivateKey(deviceKey)
-	client.deviceId = torutils.EncodePublicKey(client.deviceKey.PublicKey())
+
+	myKey := keytool.EasyEdKey{}
+	myKey.SetTorPrivateKey(ed25519.PrivateKey(deviceKey))
+	torId, err := myKey.TorId()
+	if err != nil {
+		return nil, serr.New(err)
+	}
+
+	client.deviceId = torId
 	idGen.NodeName = client.deviceId
 
 	s := nntpserver.NewServer(nntpBackend, idGen)
@@ -215,11 +224,10 @@ func (c *Client) tcpServer(s *nntpserver.Server, port int) error {
 func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 
 	log.Print(serr.Errorf("SERVER Starting: [%v]", tc))
-	onion, err := tc.Listen(80, 0, c.deviceKey)
+	onion, err := tc.Listen(80, c.deviceKey)
 	if err != nil {
 		return serr.New(err)
 	}
-	//	onion, _ := tc.Listen(80, 9980+rand.Intn(1000), c.deviceKey)
 
 	log.Print(serr.Errorf("SERVER Listening: [%v]", onion))
 	//defer listenCancel()
@@ -237,15 +245,24 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 			authCallback := func(key ed25519.PublicKey) bool {
 				clientPubKey = key
 				match := int64(0)
-				row := c.be.Peers.Db.QueryRow("SELECT COUNT(*) FROM peers WHERE torid=?", torutils.EncodePublicKey(clientPubKey))
-				err := row.Scan(&match)
+
+				kt := keytool.EasyEdKey{}
+				kt.SetTorPublicKey(clientPubKey)
+				torId, err := kt.TorId()
 				if err != nil {
-					log.Print(serr.Errorf("Dodgy hacky auth FAILED for [%s]", torutils.EncodePublicKey(clientPubKey)))
+					log.Print(serr.Errorf("failed to convert torID: [%v]", err))
+					return false
+				}
+
+				row := c.be.Peers.Db.QueryRow("SELECT COUNT(*) FROM peers WHERE torid=?", torId)
+				err = row.Scan(&match)
+				if err != nil {
+					log.Print(serr.Errorf("Dodgy hacky auth FAILED for [%s]", torId))
 					return false
 
 				}
 				if match == 1 {
-					log.Print(serr.Errorf("Dodgy hacky auth accepted for [%s]", torutils.EncodePublicKey(clientPubKey)))
+					log.Print(serr.Errorf("Dodgy hacky auth accepted for [%s]", torId))
 					return true
 				}
 				// if clientPubKey == getPeer {
@@ -256,7 +273,7 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 			}
 
 			authed, err := tc.ServerHandshake(conn, c.deviceKey, authCallback)
-			log.Print(serr.Errorf("SERVER AUTHed: [%v] [%v]\n", authed, err))
+			log.Print(serr.Errorf("SERVER AUTHed: [%v] [%v]", authed, err))
 			if err != nil {
 				conn.Close()
 				return
@@ -266,8 +283,17 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 				return
 			}
 
+			kt := keytool.EasyEdKey{}
+			kt.SetTorPublicKey(clientPubKey)
+			torId, err := kt.TorId()
+			if err != nil {
+				log.Print(serr.Errorf("failed to convert torID: [%v]", err))
+				return
+			}
+
 			clientSession := nntpserver.ClientSession{
-				"Id":       torutils.EncodePublicKey(clientPubKey),
+				"Id": torId,
+				//"Id":       torutils.EncodePublicKey(clientPubKey),
 				"PubKey":   string(fmt.Sprintf("%x", clientPubKey)),
 				"ConnMode": nntpbackend.ConnModeTor,
 			}

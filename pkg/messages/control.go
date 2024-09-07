@@ -13,7 +13,7 @@ import (
 	//"github.com/kothawoc/kothawoc/internal/messages"
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
-	"github.com/kothawoc/kothawoc/internal/torutils"
+	"github.com/kothawoc/kothawoc/pkg/keytool"
 	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
@@ -166,7 +166,11 @@ func CreateNewsGroupMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, f
 	default:
 	}
 
-	ownerID := torutils.EncodePublicKey(key.PublicKey())
+	//ownerID := torutils.EncodePublicKey(key.PublicKey())
+	myKey := keytool.EasyEdKey{}
+	myKey.SetTorPrivateKey(key)
+	ownerID, _ := myKey.TorId()
+
 	// *cough* clean off the initial id if it's there.
 	names := strings.Split(fullname, ownerID+".")
 	name := names[0]
@@ -222,7 +226,13 @@ func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, nam
 	// Subject: cmsg newgroup example.admin.info moderated
 	// Control: newgroup example.admin.info moderated
 
-	ownerID := torutils.EncodePublicKey(key.PublicKey())
+	//ownerID := torutils.EncodePublicKey(key.PublicKey())
+	myKey := keytool.EasyEdKey{}
+	myKey.SetTorPrivateKey(key)
+	ownerID, err := myKey.TorId()
+	if err != nil {
+		return "", serr.New(err)
+	}
 
 	return (&MessageTool{
 		Article: &nntp.Article{
