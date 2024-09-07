@@ -348,7 +348,11 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 			if msg.Article.Header.Get("Date") == "" {
 				msg.Article.Header.Set("Date", time.Now().UTC().Format(time.RFC1123Z))
 			}
-			msg.Sign(deviceKey)
+
+			kt := keytool.EasyEdKey{}
+			kt.SetTorPrivateKey(ed25519.PrivateKey(deviceKey))
+
+			msg.Sign(kt)
 		}
 	}
 	slog.Info("Posting", "session", session, "msg", msg)
@@ -446,7 +450,11 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		// check if it's a local connection before signing it
 		// TODO check if local device to sign it.
 		deviceKey, _ := be.DBs.ConfigGetGetBytes("deviceKey")
-		msg.Sign(deviceKey)
+
+		kt := keytool.EasyEdKey{}
+		kt.SetTorPrivateKey(ed25519.PrivateKey(deviceKey))
+
+		msg.Sign(kt)
 		//verified := msg.Verify()
 
 		signature := article.Header.Get(messages.SignatureHeader)

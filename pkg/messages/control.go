@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cretz/bine/torutil/ed25519"
 	vcard "github.com/emersion/go-vcard"
 
 	//"github.com/kothawoc/kothawoc/internal/messages"
@@ -153,7 +152,7 @@ const (
 )
 */
 
-func CreateNewsGroupMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, fullname, description string, card vcard.Card, posting nntp.PostingStatus) (string, error) {
+func CreateNewsGroupMail(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, fullname, description string, card vcard.Card, posting nntp.PostingStatus) (string, error) {
 
 	// Subject: cmsg newgroup example.admin.info moderated
 	// Control: newgroup example.admin.info moderated
@@ -167,8 +166,8 @@ func CreateNewsGroupMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, f
 	}
 
 	//ownerID := torutils.EncodePublicKey(key.PublicKey())
-	myKey := keytool.EasyEdKey{}
-	myKey.SetTorPrivateKey(key)
+	//myKey := keytool.EasyEdKey{}
+	//myKey.SetTorPrivateKey(key)
 	ownerID, _ := myKey.TorId()
 
 	// *cough* clean off the initial id if it's there.
@@ -218,17 +217,17 @@ func CreateNewsGroupMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, f
 		},
 		Preamble: "This is a MIME control message.",
 		Parts:    parts,
-	}).Sign(key)
+	}).Sign(myKey)
 }
 
-func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, name string) (string, error) {
+func CreatePeeringMail(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, name string) (string, error) {
 
 	// Subject: cmsg newgroup example.admin.info moderated
 	// Control: newgroup example.admin.info moderated
 
 	//ownerID := torutils.EncodePublicKey(key.PublicKey())
-	myKey := keytool.EasyEdKey{}
-	myKey.SetTorPrivateKey(key)
+	//myKey := keytool.EasyEdKey{}
+	//myKey.SetTorPrivateKey(key)
 	ownerID, err := myKey.TorId()
 	if err != nil {
 		return "", serr.New(err)
@@ -257,5 +256,5 @@ func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, nam
 				Content: []byte("This is a system control message to add the peer " + name + ".\r\n"),
 			},
 		},
-	}).Sign(key)
+	}).Sign(myKey)
 }

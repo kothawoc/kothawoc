@@ -436,3 +436,59 @@ func (e *EasyEdKey) ParsePublicKey(der []byte) error {
 
 	return nil
 }
+
+func (e *EasyEdKey) TorSign(data []byte) ([]byte, error) {
+
+	switch e.keyType {
+	case KtPrivateKey:
+		key, err := e.TorPrivKey()
+		if err != nil {
+			return key, serr.New(err)
+		}
+		return tor.Sign(key, data), nil
+	case KtPubliceKey:
+		return nil, serr.New(ErrPublicKey)
+	case KtTorPrivateKey:
+		key, err := e.TorPrivKey()
+		if err != nil {
+			return key, serr.New(err)
+		}
+		return tor.Sign(key, data), nil
+	case KtTorPublicKey:
+		return nil, serr.New(ErrTorPublicKey)
+	default:
+		return nil, serr.New(ErrNoKey)
+	}
+}
+
+func (e *EasyEdKey) TorVerify(signature, data []byte) (bool, error) {
+
+	switch e.keyType {
+	case KtPrivateKey:
+		key, err := e.TorPubKey()
+		if err != nil {
+			return false, serr.New(err)
+		}
+		return tor.Verify(key, data, signature), nil
+	case KtPubliceKey:
+		key, err := e.TorPubKey()
+		if err != nil {
+			return false, serr.New(err)
+		}
+		return tor.Verify(key, data, signature), nil
+	case KtTorPrivateKey:
+		key, err := e.TorPubKey()
+		if err != nil {
+			return false, serr.New(err)
+		}
+		return tor.Verify(key, data, signature), nil
+	case KtTorPublicKey:
+		key, err := e.TorPubKey()
+		if err != nil {
+			return false, serr.New(err)
+		}
+		return tor.Verify(key, data, signature), nil
+	default:
+		return false, serr.New(ErrNoKey)
+	}
+}

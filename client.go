@@ -3,6 +3,7 @@ package kothawoc
 import (
 	"database/sql"
 	"encoding/base32"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -29,7 +30,8 @@ type Client struct {
 	NNTPclient *nntpclient.Client
 	Server     *nntpserver.Server
 	be         *nntpbackend.NntpBackend
-	deviceKey  ed25519.PrivateKey
+	//deviceKey  ed25519.PrivateKey
+	deviceKey  keytool.EasyEdKey
 	deviceId   string
 	ConfigPath string
 	Tor        *torutils.TorCon
@@ -52,9 +54,13 @@ func NewClient(path string, port int) (*Client, error) {
 		be:         nntpBackend.NextBackend.(*nntpbackend.NntpBackend),
 	}
 
-	deviceKey, err := client.ConfigGetGetBytes("deviceKey")
-	if err == sql.ErrNoRows {
-		deviceKey = client.CreatePrivateKey()
+	tmpKey, err := client.ConfigGetGetBytes("deviceKey")
+	myKey := keytool.EasyEdKey{}
+	if errors.Is(err, sql.ErrNoRows) {
+		myKey = client.CreatePrivateKey()
+		pk, _ := myKey.TorPrivKey()
+		//key.
+		deviceKey := []byte(pk)
 		err = client.ConfigSet("deviceKey", deviceKey)
 		if err != nil {
 			slog.Info("error", "error", err)
@@ -66,10 +72,10 @@ func NewClient(path string, port int) (*Client, error) {
 		return nil, serr.New(err)
 	}
 
-	client.deviceKey = ed25519.PrivateKey(deviceKey)
+	//	client.deviceKey = ed25519.PrivateKey(deviceKey)
+	myKey.SetTorPrivateKey(ed25519.PrivateKey(tmpKey))
+	client.deviceKey = myKey
 
-	myKey := keytool.EasyEdKey{}
-	myKey.SetTorPrivateKey(ed25519.PrivateKey(deviceKey))
 	torId, err := myKey.TorId()
 	if err != nil {
 		return nil, serr.New(err)
@@ -92,7 +98,7 @@ func NewClient(path string, port int) (*Client, error) {
 	return client, nil
 }
 
-func (c *Client) DeviceKey() ed25519.PrivateKey {
+func (c *Client) DeviceKey() keytool.EasyEdKey {
 	return c.deviceKey
 }
 func (c *Client) DeviceId() string {
@@ -159,9 +165,10 @@ func (c *Client) Dial() {
 	serverConn, clientConn := net.Pipe()
 
 	// connect a net.Pipe end to the server session
+	pubkey, _ := c.deviceKey.TorPubKey()
 	clientSession := nntpserver.ClientSession{
 		"Id":       c.deviceId,
-		"PubKey":   string(fmt.Sprintf("%x", c.deviceKey.PublicKey())),
+		"PubKey":   string(fmt.Sprintf("%x", pubkey)),
 		"ConnMode": nntpbackend.ConnModeLocal,
 	}
 	rwc := io.ReadWriteCloser(serverConn)
@@ -174,15 +181,15 @@ func (c *Client) Dial() {
 	c.NNTPclient.Authenticate("test", "test")
 }
 
-func (c *Client) GetKey() ed25519.PrivateKey {
+func (c *Client) GetKey() keytool.EasyEdKey {
 	return c.deviceKey
 }
 
-func (c *Client) CreatePrivateKey() ed25519.PrivateKey {
+func (c *Client) CreatePrivateKey() keytool.EasyEdKey {
 	kt := keytool.EasyEdKey{}
 	kt.GenerateKey()
-	key, _ := kt.TorPrivKey()
-	return key
+	//key, _ := kt.TorPrivKey()
+	return kt
 }
 
 type GenIdType struct {
@@ -219,10 +226,11 @@ func (c *Client) tcpServer(s *nntpserver.Server, port int) error {
 	for {
 		conn, err := l.AcceptTCP()
 
-		slog.Info("Error accepting connection", err)
+		slog.Info("Error accepting connection", "error", err)
+		pubkey, _ := c.deviceKey.TorPubKey()
 		clientSession := nntpserver.ClientSession{
 			"Id":       c.deviceId,
-			"PubKey":   string(fmt.Sprintf("%x", c.deviceKey.PublicKey())),
+			"PubKey":   string(fmt.Sprintf("%x", pubkey)),
 			"ConnMode": nntpbackend.ConnModeTcp,
 		}
 
@@ -234,7 +242,8 @@ func (c *Client) tcpServer(s *nntpserver.Server, port int) error {
 func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 
 	slog.Info("SERVER Starting", "torconn", tc)
-	onion, err := tc.Listen(80, c.deviceKey)
+	privKey, _ := c.deviceKey.TorPrivKey()
+	onion, err := tc.Listen(80, privKey)
 	if err != nil {
 		return serr.New(err)
 	}
@@ -260,7 +269,7 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 				kt.SetTorPublicKey(clientPubKey)
 				torId, err := kt.TorId()
 				if err != nil {
-					slog.Info("failed to convert torID: [%v]", err)
+					slog.Info("failed to convert torID", "error", err)
 					return false
 				}
 
@@ -282,7 +291,8 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 				return false
 			}
 
-			authed, err := tc.ServerHandshake(conn, c.deviceKey, authCallback)
+			privkey, _ := c.deviceKey.TorPrivKey()
+			authed, err := tc.ServerHandshake(conn, privkey, authCallback)
 			slog.Info("SERVER AUTHed", "authed", authed, "error", err)
 			if err != nil {
 				conn.Close()

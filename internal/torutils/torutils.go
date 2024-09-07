@@ -259,10 +259,13 @@ func NewTorCon(datadir string) *TorCon {
 
 }
 
+/*
 func Sign(privateKey ed25519.PrivateKey, data []byte) []byte {
 	return ed25519.Sign(privateKey, data)
 }
 
+/*
 func Verify(publicKey ed25519.PublicKey, signature, data []byte) bool {
 	return ed25519.Verify(publicKey, data, signature)
 }
+*/
