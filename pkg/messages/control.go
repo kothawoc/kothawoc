@@ -128,13 +128,8 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions, session map[stri
 		case "rmgroup": // RFC 5537 - 5.2.2. The rmgroup Control Message
 
 			// custom messages
-		case "Subscribe":
-		case "UnSubscribe":
-			//	case "AddPeer":
-			//		return cmf.AddPeer(splitCtl[1])
-
-		case "RemovePeer":
-		case "SetPerms":
+		case "checkgroups": // rfc5337 5.2.3.
+		case "sendme": // rfc5337 5.5 but barstardised to have groups instread of message-ids
 		default:
 			slog.Info("ERROR CONTROL MESSAGE", "msg", msg)
 		}
@@ -171,12 +166,8 @@ func CreateNewsGroupMail(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, 
 	default:
 	}
 
-	//ownerID := torutils.EncodePublicKey(key.PublicKey())
-	//myKey := keytool.EasyEdKey{}
-	//myKey.SetTorPrivateKey(key)
 	ownerID, _ := myKey.TorId()
 
-	// *cough* clean off the initial id if it's there.
 	names := strings.Split(fullname, ownerID+".")
 	name := names[0]
 	if len(names) > 1 {
@@ -226,45 +217,6 @@ func CreateNewsGroupMail(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, 
 	}).Sign(myKey)
 }
 
-func CreatePeeringMail(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, name string) (string, error) {
-
-	// Subject: cmsg newgroup example.admin.info moderated
-	// Control: newgroup example.admin.info moderated
-
-	//ownerID := torutils.EncodePublicKey(key.PublicKey())
-	//myKey := keytool.EasyEdKey{}
-	//myKey.SetTorPrivateKey(key)
-	ownerID, err := myKey.TorId()
-	if err != nil {
-		return "", serr.New(err)
-	}
-
-	return (&MessageTool{
-		Article: &nntp.Article{
-			Header: textproto.MIMEHeader{
-				"Subject":                   {"AddPeer " + name},
-				"Control":                   {"AddPeer " + name},
-				"Message-Id":                {idgen.GenID()},
-				"Date":                      {time.Now().UTC().Format(time.RFC1123Z)},
-				"Newsgroups":                {ownerID + ".peers." + name},
-				"Content-Type":              {"multipart/mixed; boundary=\"nxtprt\""},
-				"Content-Transfer-Encoding": {"8bit"},
-			},
-		},
-		Preamble: "This is a MIME control message.",
-		Parts: []MimePart{
-			{
-				Header:  textproto.MIMEHeader{"Content-Type": []string{"application/news-groupinfo;charset=UTF-8"}},
-				Content: []byte("For your newsgroups file:\r\nAddPeer " + name),
-			},
-			{
-				Header:  textproto.MIMEHeader{"Content-Type": []string{"text/plain;charset=UTF-8"}},
-				Content: []byte("This is a system control message to add the peer " + name + ".\r\n"),
-			},
-		},
-	}).Sign(myKey)
-}
-
 func CreatePeerGroup(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, lang, myname, peerId string) (string, error) {
 	card := vcard.Card{}
 	card.SetValue(vcard.FieldNickname, myname)
@@ -295,4 +247,106 @@ func CreatePeerGroup(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, lang
 		idgen, groupName, "peer group", card, nntp.PostingPermitted)
 
 	return msg, serr.New(err)
+}
+
+/*
+# Subscriptions & Grouplists
+
+When a peer connects, they send a checkgroups control messaage to their peer, and
+records where in the message queue they are.
+"application/news-checkgroups"
+
+*** WARNING BREAKING RFC ***
+The peer then sends a "sendme" control message to their peers group, of which groups
+they would like the be forwarded.
+
+*** WARNING BREAKING RFC ***
+"application/newsfeed" section, with the following
+in a feed config section, there is a feed preferences, which should
+contain:
+AllControlMessages: true/false
+Feed: <tor_id>,<tor_id>,<tor_id>,<tor_Id>,.....
+
+the feed host is the main host you want your data to go to, the other hosts are your other hosts if they are offline.
+
+
+*/
+
+func CreateCheckgroups(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, peerId string, newsgroups [][2]string, cmsgs bool, feed []string) (string, error) {
+
+	ownerID, _ := myKey.TorId()
+
+	msgContent := ""
+	for _, i := range newsgroups {
+		msgContent += i[0] + "\t" + i[1] + "\r\n"
+	}
+
+	cMsgs := "false"
+	if cmsgs {
+		cMsgs = "true"
+	}
+
+	parts := []MimePart{
+		{
+			Header:  textproto.MIMEHeader{"Content-Type": []string{"application/news-checkgroups;charset=UTF-8"}},
+			Content: []byte(msgContent),
+		},
+		{
+			Header:  textproto.MIMEHeader{"Content-Type": []string{"application/newsfeed;charset=UTF-8"}},
+			Content: []byte("ControlMessages: " + cMsgs + "\r\nFeed: " + strings.Join(feed, ",")),
+		},
+		{
+			Header:  textproto.MIMEHeader{"Content-Type": []string{"text/plain;charset=UTF-8"}},
+			Content: []byte("This is a system control message to checkgroups from " + ownerID + ".\r\n"),
+		},
+	}
+
+	return (&MessageTool{
+		Article: &nntp.Article{
+			Header: textproto.MIMEHeader{
+				"Subject":                   {"cmsg checkgroups " + peerId},
+				"Control":                   {"checkgroups " + peerId},
+				"Message-Id":                {idgen.GenID()},
+				"Date":                      {time.Now().UTC().Format(time.RFC1123Z)},
+				"Newsgroups":                {peerId + "." + ownerID},
+				"Content-Type":              {"multipart/mixed; boundary=\"nxtprt\""},
+				"Content-Transfer-Encoding": {"8bit"},
+			},
+		},
+		Preamble: "This is a MIME control message.",
+		Parts:    parts,
+	}).Sign(myKey)
+}
+
+func CreateSendme(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, peerId string, newsgroups []string) (string, error) {
+
+	ownerID, _ := myKey.TorId()
+
+	msgContent := strings.Join(newsgroups, "\r\n")
+	parts := []MimePart{
+		{
+			Header:  textproto.MIMEHeader{"Content-Type": []string{"application/newsfeed;charset=UTF-8"}},
+			Content: []byte(msgContent),
+		},
+		{
+			Header:  textproto.MIMEHeader{"Content-Type": []string{"text/plain;charset=UTF-8"}},
+			Content: []byte("This is a system control message to request groups from " + ownerID + ".\r\n"),
+		},
+	}
+
+	return (&MessageTool{
+		Article: &nntp.Article{
+			Header: textproto.MIMEHeader{
+				"Subject":                   {"cmsg sendme " + peerId},
+				"Control":                   {"semdme " + peerId},
+				"Message-Id":                {idgen.GenID()},
+				"Date":                      {time.Now().UTC().Format(time.RFC1123Z)},
+				"Newsgroups":                {peerId + "." + ownerID},
+				"Content-Type":              {"multipart/mixed; boundary=\"nxtprt\""},
+				"Content-Transfer-Encoding": {"8bit"},
+			},
+		},
+		Preamble: "This is a MIME control message.",
+		Parts:    parts,
+	}).Sign(myKey)
 }
