@@ -12,11 +12,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cretz/bine/torutil/ed25519"
 	vcard "github.com/emersion/go-vcard"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
+	"github.com/kothawoc/kothawoc/pkg/keytool"
 	"github.com/kothawoc/kothawoc/pkg/messages"
 	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
@@ -491,4 +493,15 @@ func (dbs *backendDbs) ConfigGetString(key string) (string, error) {
 		return val, serr.New(err)
 	}
 	return val, nil
+}
+
+func (dbs *backendDbs) ConfigGetDeviceKey() (keytool.EasyEdKey, error) {
+	tmpKey, err := dbs.ConfigGetGetBytes("deviceKey")
+	myKey := keytool.EasyEdKey{}
+	if err != nil {
+		slog.Info("error", "error", err)
+		return myKey, serr.New(err)
+	}
+	myKey.SetTorPrivateKey(ed25519.PrivateKey(tmpKey))
+	return myKey, nil
 }

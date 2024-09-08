@@ -93,7 +93,7 @@ func NewClient(path string, port int) (*Client, error) {
 
 	//go func() {
 	client.Dial()
-	client.CreateNewGroup("peers", "Control group for peering messages.", nntp.PostingPermitted)
+	//client.CreateNewGroup("peers", "Control group for peering messages.", nntp.PostingPermitted)
 	//}()
 	return client, nil
 }
@@ -139,8 +139,9 @@ func (c *Client) CreateNewGroup(name, description string, posting nntp.PostingSt
 }
 
 // func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, name string) (string, error) {
-func (c *Client) AddPeer(torId string) error {
-	mail, err := messages.CreatePeeringMail(c.deviceKey, idGen, torId)
+func (c *Client) AddPeer(torId, myname string) error {
+	mail, err := messages.CreatePeerGroup(c.deviceKey, idGen, "", myname, torId)
+	//mail, err := messages.CreatePeeringMail(c.deviceKey, idGen, torId)
 	//log.Printf("New peering mail err[%v]:=====================\n%s\n===================\n", err, mail)
 	if err != nil {
 		return serr.New(err)
@@ -214,13 +215,13 @@ func (c *Client) tcpServer(s *nntpserver.Server, port int) error {
 	if err != nil {
 		return serr.New(err)
 	}
-	slog.Info("Error resolving listener", "error", err)
+	slog.Info("Resolving listener", "error", err)
 	l, err := net.ListenTCP("tcp", a)
 	if err != nil {
 		l.Close()
 		return serr.New(err)
 	}
-	slog.Info("Error setting up listener", "error", err)
+	slog.Info("Setting up listener", "error", err)
 	defer l.Close()
 
 	for {

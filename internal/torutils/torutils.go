@@ -194,13 +194,11 @@ func (t *TorCon) ServerHandshake(conn net.Conn, privateKey ed25519.PrivateKey, a
 func (t *TorCon) Listen(torPort int, privateKey ed25519.PrivateKey) (*tor.OnionService, error) {
 
 	// Wait at most a few minutes to publish the service
-	listenCtx, _ := context.WithTimeout(context.Background(), 3*time.Minute)
+	listenCtx, _ := context.WithTimeout(context.Background(), 1*time.Minute)
 	// Create an onion service to listen on 8080 but show as 80
 	// localKey := getPrivateKey()
 	onion, err := t.t.Listen(listenCtx, &tor.ListenConf{Version3: true, Key: privateKey, RemotePorts: []int{torPort}})
-	//onion, err := t.t.Listen(listenCtx, &tor.ListenConf{Version3: true, LocalPort: localPort, Key: privateKey, RemotePorts: []int{torPort}})
-	//onion, err := t.t.Listen(listenCtx, &tor.ListenConf{LocalPort: localPort, Key: privateKey, RemotePorts: []int{torPort}})
-	// onion.
+
 	if err != nil {
 		return nil, err
 	}
@@ -221,13 +219,8 @@ func (t *TorCon) Dial(proto, remote string) (net.Conn, error) {
 
 func NewTorCon(datadir string) *TorCon {
 
-	//	log.Printf("pklen size [%d] [%s]", len(key.PublicKey()), key.PublicKey())
-
-	//panic("poop")
-	//t, err := tor.Start(nil, &tor.StartConf{DataDir: datadir, ProcessCreator: tor047.NewCreator()})
 	t, err := tor.Start(context.Background(), &tor.StartConf{DataDir: datadir})
 	if err != nil {
-		//panic(err)
 		slog.Info("Tor start Error", "error", err)
 		return nil
 	}
@@ -235,10 +228,6 @@ func NewTorCon(datadir string) *TorCon {
 	tc := &TorCon{
 		t: t,
 	}
-
-	//	<-time.After(time.Second)
-
-	//	log.Printf("Started dialing up")
 
 	go func() {
 		time.Sleep(time.Second * 3)
@@ -248,7 +237,7 @@ func NewTorCon(datadir string) *TorCon {
 		dialer, err := tc.t.Dialer(dialCtx, nil)
 		if err != nil {
 			slog.Info("Error Dialer setup", "error", err)
-			//return nil
+
 			return
 		}
 
@@ -258,14 +247,3 @@ func NewTorCon(datadir string) *TorCon {
 	return tc
 
 }
-
-/*
-func Sign(privateKey ed25519.PrivateKey, data []byte) []byte {
-	return ed25519.Sign(privateKey, data)
-}
-
-/*
-func Verify(publicKey ed25519.PublicKey, signature, data []byte) bool {
-	return ed25519.Verify(publicKey, data, signature)
-}
-*/

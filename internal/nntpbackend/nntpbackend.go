@@ -71,9 +71,12 @@ func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error)
 	//		NewGroup: be.DBs.NewGroup,
 	//		AddPeer:  np.AddPeer,
 
-	key, _ := dbs.ConfigGetGetBytes("deviceKey")
+	//key, _ := dbs.ConfigGetGetBytes("deviceKey")
 
-	peers, err := peering.NewPeers(dbs.peers, tc, ed25519.PrivateKey(key))
+	key, _ := dbs.ConfigGetDeviceKey()
+	tpk, _ := key.TorPrivKey()
+
+	peers, err := peering.NewPeers(dbs.peers, tc, tpk)
 	if err != nil {
 		return nil, serr.New(err)
 	}

@@ -81,7 +81,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 		case "cancel": // RFC 5537 - 5.3. The cancel Control Message
 			slog.Info("Cancel")
 
-			return cmf.Cancel(msg.Article.Header.Get("From"), splitCtl[1], msg.Article.Header.Get("Newsgroups"), cmf)
+			return serr.New(cmf.Cancel(msg.Article.Header.Get("From"), splitCtl[1], msg.Article.Header.Get("Newsgroups"), cmf))
 
 		case "newsgroup": // RFC 5537 - 5.2.1. The newgroup Control Message
 			// TODO: LOLz people can create any newsgroup name they wish, so long as it's
@@ -113,7 +113,13 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 				}
 				//	description := strings.Join(splitCtl[2:len(splitCtl)-1], "\n")[1]
 				//be.DBs.NewGroup(splitCtl[1], description, splitCtl[len(splitCtl)])
-				return cmf.NewGroup(splitCtl[1], description, card)
+				if len(splitGroup) > 2 && splitGroup[1] == "peers" {
+					err := cmf.AddPeer(splitCtl[1])
+					if err != nil {
+						return serr.New(err)
+					}
+				}
+				return serr.New(cmf.NewGroup(splitCtl[1], description, card))
 
 			}
 			//dbs.NewGroup("alt.misc.test", "Alt misc test group", "y")
@@ -240,7 +246,7 @@ func CreatePeeringMail(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, na
 				"Control":                   {"AddPeer " + name},
 				"Message-Id":                {idgen.GenID()},
 				"Date":                      {time.Now().UTC().Format(time.RFC1123Z)},
-				"Newsgroups":                {ownerID + ".peers"},
+				"Newsgroups":                {ownerID + ".peers." + name},
 				"Content-Type":              {"multipart/mixed; boundary=\"nxtprt\""},
 				"Content-Transfer-Encoding": {"8bit"},
 			},
@@ -257,4 +263,36 @@ func CreatePeeringMail(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, na
 			},
 		},
 	}).Sign(myKey)
+}
+
+func CreatePeerGroup(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, lang, myname, peerId string) (string, error) {
+	card := vcard.Card{}
+	card.SetValue(vcard.FieldNickname, myname)
+	card.SetValue(vcard.FieldLanguage, lang)
+
+	card.Add("X-KW-PERMS", &vcard.Field{
+		Value:  "group",
+		Params: vcard.Params{},
+	})
+
+	card.Add("X-KW-PERMS", &vcard.Field{
+		Value: peerId,
+		Params: vcard.Params{
+			"read":  {"true"},
+			"reply": {"true"},
+			"post":  {"true"},
+		},
+	})
+
+	vcard.ToV4(card)
+	myId, err := myKey.TorId()
+	if err != nil {
+		return "", serr.New(err)
+	}
+	groupName := myId + ".peers." + peerId
+
+	msg, err := CreateNewsGroupMail(myKey,
+		idgen, groupName, "peer group", card, nntp.PostingPermitted)
+
+	return msg, serr.New(err)
 }
