@@ -13,6 +13,7 @@ import (
 	nntpclient "github.com/kothawoc/go-nntp/client"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/messages"
+	serr "github.com/kothawoc/kothawoc/pkg/serror"
 )
 
 /*
@@ -25,6 +26,12 @@ CREATE TABLE IF NOT EXISTS peers (
 	);
 */
 
+type BackendDbs struct {
+	Path                            string
+	Articles, Config, Groups, Peers *sql.DB
+	GroupArticles                   map[string]*sql.DB
+}
+
 type PeeringCommand string
 
 const (
@@ -34,6 +41,7 @@ const (
 	CmdDistribute   = PeeringCommand("Distribute")
 	CmdExit         = PeeringCommand("Exit")
 	CmdWorkerExited = PeeringCommand("WorkerExited")
+	CmdSendme       = PeeringCommand("Sendme")
 )
 
 type PeeringMessage struct {
@@ -44,6 +52,7 @@ type PeeringMessage struct {
 type Peer struct {
 	Id        int
 	Tc        *torutils.TorCon
+	Dbs       BackendDbs
 	Conn      net.Conn
 	TorId     string
 	PubKey    string
@@ -54,10 +63,11 @@ type Peer struct {
 	Cmd       chan PeeringMessage
 }
 
-func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, torId string, db *sql.DB, key ed25519.PrivateKey) (*Peer, error) {
+func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, torId string, db *sql.DB, key ed25519.PrivateKey, dbs BackendDbs) (*Peer, error) {
 	Peer := &Peer{
 		Tc:        tc,
 		TorId:     torId,
+		Dbs:       dbs,
 		ParentCmd: parent,
 		Key:       key,
 		Cmd:       make(chan PeeringMessage, 10),
@@ -77,6 +87,7 @@ func (p *Peer) Worker() {
 			}
 		}
 	}()
+	defer close(p.Cmd)
 	for {
 		select {
 		case cmd := <-p.Cmd:
@@ -111,7 +122,64 @@ func (p *Peer) Worker() {
 				}
 				p.Conn.Close()
 				return
+
+			case CmdSendme:
+				/*
+
+					func (p *Peers) Sendme(peerid, list, options string) error {
+						err := make(chan error)
+						p.Cmd <- PeeringMessage{
+							Cmd:  CmdSendme,
+							Args: []interface{}{peerid, list, options, err},
+
+						Content: []byte("ControlMessages: " + cMsgs + "\r\nFeed: " + strings.Join(feed, ",")),
+				*/
+				peerid := cmd.Args[0].(string)
+				list := strings.Split(cmd.Args[1].(string), "\r\n")
+				opts := strings.Split(cmd.Args[2].(string), "\r\n")
+				err := cmd.Args[3].(chan error)
+
+				cm := ""
+				feed := ""
+				for _, i := range opts {
+					sOpt := strings.Split(i, ": ")
+					switch sOpt[0] {
+					case "ControlMessages":
+						cm = sOpt[1]
+					case "Feed":
+						feed = sOpt[1]
+					}
+				}
+
+				groupName := p.TorId + ".peers." + peerid
+				gDB := p.Dbs.GroupArticles[groupName]
+
+				query := "UPDATE OR INSERT config(key,val) VALUES(?,?) WHERE key=?"
+				gDB.Exec(query, "ControlMessages", cm)
+				gDB.Exec(query, "Feed", feed)
+				gDB.Exec(query, "LastMessage", 0)
+				gDB.Exec("DELETE FROM subscriptions;")
+				/*
+
+					CREATE TABLE IF NOT EXISTS subscriptions (
+						group TEXT NOT NULL UNIQUE
+					    );
+
+				*/
+
+				for _, i := range list {
+					query := "INSERT INTO subscriptions(group) VALUES(?);"
+					gDB.Exec(query, i)
+					slog.Info("INSERT INTO", "item", i, "query", query)
+
+				}
+
+				slog.Info("debug:", "peerid", peerid, "list", list, "opts", opts)
+
+				close(err)
+				//p.Conn[torid].Cmd <- cmd
 			}
+
 			//	case cmd := <-Peer.ParentCmd:
 			//		fmt.Println("Received int:", cmd)
 			//		for _, peer := range p.Conns {
@@ -172,11 +240,12 @@ type Peers struct {
 	Key   ed25519.PrivateKey
 	Tc    *torutils.TorCon
 	Db    *sql.DB
+	DBs   BackendDbs
 	Cmd   chan PeeringMessage
 	Exit  chan interface{}
 }
 
-func NewPeers(db *sql.DB, tc *torutils.TorCon, key ed25519.PrivateKey) (*Peers, error) {
+func NewPeers(db *sql.DB, tc *torutils.TorCon, key ed25519.PrivateKey, DBs BackendDbs) (*Peers, error) {
 	Peers := &Peers{
 		Conns: make(map[string]*Peer),
 		Cmd:   make(chan PeeringMessage, 10),
@@ -184,6 +253,7 @@ func NewPeers(db *sql.DB, tc *torutils.TorCon, key ed25519.PrivateKey) (*Peers, 
 		Key:   key,
 		Tc:    tc,
 		Db:    db,
+		DBs:   DBs,
 	}
 
 	/*
@@ -204,10 +274,12 @@ func (p *Peers) Worker() {
 		case cmd := <-p.Cmd:
 			switch cmd.Cmd {
 			case CmdConnect:
+				errChan := cmd.Args[0].(chan error)
 
 				rows, err := p.Db.Query("SELECT id,torid,pubkey,name FROM peers;")
 				if err != nil {
-
+					errChan <- serr.New(err)
+					close(errChan)
 					rows.Close()
 					continue
 					//	return nil, err
@@ -221,13 +293,14 @@ func (p *Peers) Worker() {
 						//		return nil, err
 					}
 					slog.Info("peerlist", "id", id, "torid", torid, "pubkey", pubkey, "name", name)
-					conn, _ := NewPeer(p.Tc, p.Cmd, torid, p.Db, p.Key)
+					conn, _ := NewPeer(p.Tc, p.Cmd, torid, p.Db, p.Key, p.DBs)
 					p.Conns[torid] = conn
 					p.Conns[torid].Cmd <- cmd
 					// dialup torid
 
 				}
 				rows.Close()
+				close(errChan)
 			case CmdDistribute:
 				for _, peer := range p.Conns {
 					peer.Cmd <- cmd
@@ -260,7 +333,7 @@ func (p *Peers) Worker() {
 				}
 
 				slog.Info("Adding peer", "id", id, "torid", torid, "pubkey", pubkey, "name", name)
-				conn, err := NewPeer(p.Tc, p.Cmd, torid, p.Db, p.Key)
+				conn, err := NewPeer(p.Tc, p.Cmd, torid, p.Db, p.Key, p.DBs)
 
 				slog.Info("ERROR ADDPEER", "error", err)
 				if err != nil {
@@ -278,7 +351,11 @@ func (p *Peers) Worker() {
 				p.Conns[torid].Cmd <- cmd
 				errChan <- nil
 				close(errChan)
+			case CmdSendme:
+				torid := cmd.Args[0].(string)
+				p.Conns[torid].Cmd <- cmd
 			}
+
 		case <-p.Exit:
 			return
 		}
@@ -318,7 +395,18 @@ func (p *Peers) DistributeArticle(msg messages.MessageTool) error {
 func (p *Peers) Connect() error {
 	err := make(chan error)
 	p.Cmd <- PeeringMessage{
-		Cmd: CmdConnect,
+		Cmd:  CmdConnect,
+		Args: []interface{}{err},
+	}
+
+	return <-err
+}
+
+func (p *Peers) Sendme(peerid, list, options string) error {
+	err := make(chan error)
+	p.Cmd <- PeeringMessage{
+		Cmd:  CmdSendme,
+		Args: []interface{}{peerid, list, options, err},
 	}
 
 	return <-err

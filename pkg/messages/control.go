@@ -58,6 +58,7 @@ type ControMesasgeFunctions struct {
 	AddPeer    func(name string) error
 	RemovePeer func(name string) error
 	Cancel     func(from, messageid, newsgroups string, cmf ControMesasgeFunctions) error
+	Sendme     func(name, list, options string) error
 }
 
 // func CheckControl(msg *messages.MessageTool, newGroup func(name, description, flags string) error) bool {
@@ -129,7 +130,35 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions, session map[stri
 
 			// custom messages
 		case "checkgroups": // rfc5337 5.2.3.
+			// we can probably just ignore this message as the user interfaace decideds if to add groups
+
 		case "sendme": // rfc5337 5.5 but barstardised to have groups instread of message-ids
+
+			/*
+
+				parts := []MimePart{
+					{
+						Header:  textproto.MIMEHeader{"Content-Type": []string{"application/newsfeed;charset=UTF-8"}},
+						Content: []byte(msgContent),
+					},
+					{
+						Header:  textproto.MIMEHeader{"Content-Type": []string{"application/news-checkgroups;charset=UTF-8"}},
+						Content: []byte("ControlMessages: " + cMsgs + "\r\nFeed: " + strings.Join(feed, ",")),
+					},
+			*/
+			grouplist := ""
+			opts := ""
+			for _, h := range msg.Parts {
+				switch h.Header.Get("Content-Type") {
+				case "application/news-groupinfo;charset=UTF-8":
+					grouplist = string(h.Content)
+				case "application/newsfeed;charset=UTF-8":
+					opts = string(h.Content)
+				}
+
+			}
+			return serr.New(cmf.Sendme(msg.Article.Header.Get("From"), grouplist, opts))
+
 		default:
 			slog.Info("ERROR CONTROL MESSAGE", "msg", msg)
 		}
@@ -272,7 +301,7 @@ the feed host is the main host you want your data to go to, the other hosts are 
 
 */
 
-func CreateCheckgroups(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, peerId string, newsgroups [][2]string, cmsgs bool, feed []string) (string, error) {
+func CreateCheckgroups(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, peerId string, newsgroups [][2]string) (string, error) {
 
 	ownerID, _ := myKey.TorId()
 
@@ -281,19 +310,10 @@ func CreateCheckgroups(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, pe
 		msgContent += i[0] + "\t" + i[1] + "\r\n"
 	}
 
-	cMsgs := "false"
-	if cmsgs {
-		cMsgs = "true"
-	}
-
 	parts := []MimePart{
 		{
 			Header:  textproto.MIMEHeader{"Content-Type": []string{"application/news-checkgroups;charset=UTF-8"}},
 			Content: []byte(msgContent),
-		},
-		{
-			Header:  textproto.MIMEHeader{"Content-Type": []string{"application/newsfeed;charset=UTF-8"}},
-			Content: []byte("ControlMessages: " + cMsgs + "\r\nFeed: " + strings.Join(feed, ",")),
 		},
 		{
 			Header:  textproto.MIMEHeader{"Content-Type": []string{"text/plain;charset=UTF-8"}},
@@ -318,15 +338,23 @@ func CreateCheckgroups(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, pe
 	}).Sign(myKey)
 }
 
-func CreateSendme(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, peerId string, newsgroups []string) (string, error) {
+func CreateSendme(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, peerId string, newsgroups []string, cmsgs bool, feed []string) (string, error) {
 
 	ownerID, _ := myKey.TorId()
 
+	cMsgs := "false"
+	if cmsgs {
+		cMsgs = "true"
+	}
 	msgContent := strings.Join(newsgroups, "\r\n")
 	parts := []MimePart{
 		{
 			Header:  textproto.MIMEHeader{"Content-Type": []string{"application/newsfeed;charset=UTF-8"}},
 			Content: []byte(msgContent),
+		},
+		{
+			Header:  textproto.MIMEHeader{"Content-Type": []string{"application/news-checkgroups;charset=UTF-8"}},
+			Content: []byte("ControlMessages: " + cMsgs + "\r\nFeed: " + strings.Join(feed, ",")),
 		},
 		{
 			Header:  textproto.MIMEHeader{"Content-Type": []string{"text/plain;charset=UTF-8"}},

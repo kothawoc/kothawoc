@@ -75,8 +75,15 @@ func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error)
 
 	key, _ := dbs.ConfigGetDeviceKey()
 	tpk, _ := key.TorPrivKey()
+	nDBs := peering.BackendDbs{
+		Articles:      dbs.articles,
+		Config:        dbs.config,
+		Groups:        dbs.groups,
+		Peers:         dbs.peers,
+		GroupArticles: dbs.groupArticles,
+	}
 
-	peers, err := peering.NewPeers(dbs.peers, tc, tpk)
+	peers, err := peering.NewPeers(dbs.peers, tc, tpk, nDBs)
 	if err != nil {
 		return nil, serr.New(err)
 	}
@@ -95,6 +102,10 @@ func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error)
 		NextBackend: nextBackend,
 	}, nil
 
+}
+
+type DBs struct {
+	*backendDbs
 }
 
 type NntpBackend struct {
@@ -405,6 +416,7 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		AddPeer:    be.Peers.AddPeer,
 		RemovePeer: be.Peers.RemovePeer,
 		Cancel:     be.DBs.CancelMessage,
+		Sendme:     be.Peers.Sendme,
 	}
 
 	if err := messages.CheckControl(msg, cmf, session); err != nil {
