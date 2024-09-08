@@ -407,7 +407,7 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		Cancel:     be.DBs.CancelMessage,
 	}
 
-	if err := messages.CheckControl(msg, cmf); err != nil {
+	if err := messages.CheckControl(msg, cmf, session); err != nil {
 
 		slog.Info("ERROR POST Control message failed", "error", err)
 		return nntpserver.ErrPostingFailed

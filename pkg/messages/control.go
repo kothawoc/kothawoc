@@ -61,7 +61,7 @@ type ControMesasgeFunctions struct {
 }
 
 // func CheckControl(msg *messages.MessageTool, newGroup func(name, description, flags string) error) bool {
-func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
+func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions, session map[string]string) error {
 
 	slog.Info("CHECK CONTROL MESSAGE", "msg", msg)
 	if ctrl := msg.Article.Header.Get("Control"); ctrl != "" {
@@ -111,10 +111,12 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 					}
 
 				}
-				//	description := strings.Join(splitCtl[2:len(splitCtl)-1], "\n")[1]
-				//be.DBs.NewGroup(splitCtl[1], description, splitCtl[len(splitCtl)])
-				if len(splitGroup) > 2 && splitGroup[1] == "peers" {
-					err := cmf.AddPeer(splitCtl[1])
+
+				// if this is a peering group,
+				if len(splitGroup) == 3 &&
+					splitGroup[0] == session["Id"] &&
+					splitGroup[1] == "peers" {
+					err := cmf.AddPeer(splitGroup[2])
 					if err != nil {
 						return serr.New(err)
 					}
@@ -122,16 +124,14 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions) error {
 				return serr.New(cmf.NewGroup(splitCtl[1], description, card))
 
 			}
-			//dbs.NewGroup("alt.misc.test", "Alt misc test group", "y")
-			//dbs.NewGroup("misc.test", "Alt misc test group", "y")
-			//dbs.NewGroup("alt.test", "Alt misc test group", "y")
+
 		case "rmgroup": // RFC 5537 - 5.2.2. The rmgroup Control Message
 
 			// custom messages
 		case "Subscribe":
 		case "UnSubscribe":
-		case "AddPeer":
-			return cmf.AddPeer(splitCtl[1])
+			//	case "AddPeer":
+			//		return cmf.AddPeer(splitCtl[1])
 
 		case "RemovePeer":
 		case "SetPerms":

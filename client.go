@@ -277,7 +277,7 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 				row := c.be.Peers.Db.QueryRow("SELECT COUNT(*) FROM peers WHERE torid=?", torId)
 				err = row.Scan(&match)
 				if err != nil {
-					slog.Info("Dodgy hacky auth FAILED for", "torid", torId)
+					slog.Info("Dodgy hacky auth FAILED for", "torid", torId, "error", err)
 					return false
 
 				}

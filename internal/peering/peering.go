@@ -68,11 +68,13 @@ func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, torId string, db *
 }
 
 func (p *Peer) Worker() {
-	//time.Sleep((time.Second * 30))
 	go func() {
 		for {
 			time.Sleep(time.Second * 5)
-			p.Cmd <- PeeringMessage{}
+			// only send a refresh if it's not busy
+			if len(p.Cmd) == 0 {
+				p.Cmd <- PeeringMessage{}
+			}
 		}
 	}()
 	for {
