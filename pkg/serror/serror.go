@@ -1,6 +1,7 @@
 package serror
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 )
@@ -32,11 +33,18 @@ func (e Serror) RuntimeName() string {
 	return e.runtimeName
 }
 
-func New(err error) error {
+func New(iErr any) error {
 	pc, fn, line, _ := runtime.Caller(1)
 
-	if err == nil {
+	if iErr == nil {
 		return nil
+	}
+	var err error
+	switch v := iErr.(type) {
+	case error:
+		err = v
+	default:
+		err = fmt.Errorf("%v", v)
 	}
 
 	return Serror{
@@ -47,11 +55,11 @@ func New(err error) error {
 	}
 }
 
-func Wrap(err1, err2 error) error {
+func Wrap(err ...error) error {
 	pc, fn, line, _ := runtime.Caller(1)
 
 	return Serror{
-		err:         fmt.Errorf("%q: %q", err1, err2),
+		err:         errors.Join(err...),
 		runtimeName: runtime.FuncForPC(pc).Name(),
 		function:    fn,
 		line:        line,

@@ -68,17 +68,17 @@ type TorCon struct {
 
 // WARNING TODO: make sure pubkey lengths are correct or it will panic,
 // WARNING TODO: verify public keys match tor id hash.
-func (t *TorCon) ClientHandshake(conn net.Conn, privateKey ed25519.PrivateKey, remoteAddr string) (ed25519.PublicKey, error) {
+func (t *TorCon) ClientHandshake(conn net.Conn, myKey keytool.EasyEdKey, remoteAddr string) (ed25519.PublicKey, error) {
+
+	privateKey, _ := myKey.TorPrivKey()
+	torId, _ := myKey.TorId()
 	// construct initial handshake
 	hexPublicKey := hex.EncodeToString([]byte(privateKey.PublicKey()))
 	//log.Printf("Client public key: size[%d] content[%s]", len([]byte(ed25519.PublicKey(privateKey))), []byte(ed25519.PublicKey(privateKey)))
 
 	//torId := EncodePublicKey([]byte(privateKey.PublicKey()))
 
-	myKey := keytool.EasyEdKey{}
-	myKey.SetTorPrivateKey(ed25519.PrivateKey(privateKey))
 	//torId, err := keytool.EncodePublicKey([]byte(privateKey.PublicKey()))
-	torId, err := myKey.TorId()
 	initialHandshake := hexPublicKey + " " + torId + " " + randomHexString(32)
 	initialHandshake += " " + hex.EncodeToString(ed25519.Sign(privateKey, []byte(initialHandshake))) + "\n"
 	//log.Printf("CLIENT HANDSHAKE SEND TO SERVER: ", initialHandshake)

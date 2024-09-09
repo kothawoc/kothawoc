@@ -138,6 +138,7 @@ func (c *Client) CreateNewGroup(name, description string, posting nntp.PostingSt
 	return serr.New(c.NNTPclient.Post(strings.NewReader(mail)))
 }
 
+// TODO: *** WARNING *** THIS CAUSES A PANIC ON THE FIRST STARTUP BEFORE THE DEVICE KEY HSA BEEN SET.
 // func CreatePeeringMail(key ed25519.PrivateKey, idgen nntpserver.IdGenerator, name string) (string, error) {
 func (c *Client) AddPeer(torId, myname string) error {
 	mail, err := messages.CreatePeerGroup(c.deviceKey, idGen, "", myname, torId)
@@ -274,7 +275,7 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 					return false
 				}
 
-				row := c.be.Peers.Db.QueryRow("SELECT COUNT(*) FROM peers WHERE torid=?", torId)
+				row := c.be.Peers.DBs.Peers.QueryRow("SELECT COUNT(*) FROM peers WHERE torid=?", torId)
 				err = row.Scan(&match)
 				if err != nil {
 					slog.Info("Dodgy hacky auth FAILED for", "torid", torId, "error", err)

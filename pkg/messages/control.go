@@ -2,6 +2,7 @@ package messages
 
 import (
 	"bytes"
+	"database/sql"
 	"log/slog"
 	"net/textproto"
 	"strings"
@@ -54,8 +55,8 @@ Allbery & Lindsey           Standards Track                    [Page 37] - [Page
 */
 
 type ControMesasgeFunctions struct {
-	NewGroup   func(name, description string, card vcard.Card) error
-	AddPeer    func(name string) error
+	NewGroup   func(name, description string, card vcard.Card) (map[string]*sql.DB, error)
+	AddPeer    func(name string, groupsdbs map[string]*sql.DB) error
 	RemovePeer func(name string) error
 	Cancel     func(from, messageid, newsgroups string, cmf ControMesasgeFunctions) error
 	Sendme     func(name, list, options string) error
@@ -76,7 +77,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions, session map[stri
 		//		 5.2.1. The newgroup Control Message .......................36
 		//				5.2.1.1. newgroup Control Message Example ..........37
 		//		 5.2.2. The rmgroup Control Message ........................38
-		//		 5.2.3. The checkgroups Control Message ....................38
+		//		 5.2.3. The checkgroups Control "ControlMessages: " + cMsgs + "\r\nFeed: " + Message ....................38
 		//	5.3. The cancel Control Message ................................40
 		// rfc defined messages
 		case "cancel": // RFC 5537 - 5.3. The cancel Control Message
@@ -113,16 +114,21 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions, session map[stri
 
 				}
 
+				groupDBs, err := cmf.NewGroup(splitCtl[1], description, card)
+				if err != nil {
+					return serr.New(err)
+				}
+
 				// if this is a peering group,
 				if len(splitGroup) == 3 &&
 					splitGroup[0] == session["Id"] &&
 					splitGroup[1] == "peers" {
-					err := cmf.AddPeer(splitGroup[2])
+					err := cmf.AddPeer(splitGroup[2], groupDBs)
 					if err != nil {
 						return serr.New(err)
 					}
 				}
-				return serr.New(cmf.NewGroup(splitCtl[1], description, card))
+				return nil
 
 			}
 
@@ -145,6 +151,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions, session map[stri
 						Header:  textproto.MIMEHeader{"Content-Type": []string{"application/news-checkgroups;charset=UTF-8"}},
 						Content: []byte("ControlMessages: " + cMsgs + "\r\nFeed: " + strings.Join(feed, ",")),
 					},
+
 			*/
 			grouplist := ""
 			opts := ""

@@ -24,6 +24,7 @@ import (
 )
 
 type backendDbs struct {
+	Cmd                             chan DatabaseMessage
 	path                            string
 	articles, config, groups, peers *sql.DB
 	groupArticles                   map[string]*sql.DB
@@ -78,9 +79,8 @@ CREATE TABLE IF NOT EXISTS articles (
 	messageid TEXT NOT NULL UNIQUE
 	);
 CREATE TABLE IF NOT EXISTS subscriptions (
-	group TEXT NOT NULL UNIQUE
-    );
-	
+	groupname TEXT NOT NULL UNIQUE
+	);
 CREATE TABLE IF NOT EXISTS config (
 	key TEXT NOT NULL UNIQUE,
 	val BLOB
@@ -149,19 +149,69 @@ func NewBackendDBs(path string) (*backendDbs, error) {
 
 	dbs.OpenGroups()
 
+	dbs.Cmd = make(chan DatabaseMessage, 10)
+	go dbs.DbServer()
+
 	return dbs, nil
+}
+
+type DatabaseCommand string
+type DatabaseMessage struct {
+	Cmd  DatabaseCommand
+	Args []interface{}
+}
+
+func (dbs *backendDbs) DbServer() error {
+	for {
+		cmd := <-dbs.Cmd
+		slog.Info("DB SERVER", "cmd", cmd.Cmd, "args", cmd.Args)
+		switch cmd.Cmd {
+		case CmdGetPerms: // Args: []interface{}{torid, group, ret},
+			ret := cmd.Args[2].(chan []interface{})
+			ret <- []interface{}{dbs.getPerms(cmd.Args[0].(string), cmd.Args[1].(string))}
+			close(ret)
+
+		case CmdNewGroup: // Args: []interface{}{name, description, card, ret},
+			ret := cmd.Args[3].(chan []interface{})
+			a, b := dbs.newGroup(cmd.Args[0].(string), cmd.Args[1].(string), cmd.Args[2].(vcard.Card))
+			ret <- []interface{}{a, b}
+			close(ret)
+
+		case CmdGetArticleBySignature: // Args: []interface{}{signature, ret},
+			ret := cmd.Args[1].(chan []interface{})
+			a, b := dbs.getArticleBySignature(cmd.Args[0].(string))
+			ret <- []interface{}{a, b}
+			close(ret)
+
+		case CmdGetArticleById: // Args: []interface{}{signature, ret},
+			ret := cmd.Args[1].(chan []interface{})
+			a, b := dbs.getArticleById(cmd.Args[0].(string))
+			ret <- []interface{}{a, b}
+			close(ret)
+
+		case CmdConfigSet: // Args: []interface{}{key, val, ret},
+			ret := cmd.Args[2].(chan []interface{})
+			a := dbs.configSet(cmd.Args[0].(string), cmd.Args[1])
+			ret <- []interface{}{a}
+			close(ret)
+
+		case CmdConfigGetString: // Args: []interface{}{key, ret},
+			ret := cmd.Args[2].(chan []interface{})
+			a, b := dbs.configGetString(cmd.Args[0].(string))
+			ret <- []interface{}{a, b}
+			close(ret)
+
+		}
+	}
 }
 
 func (dbs *backendDbs) OpenGroups() error {
 
-	groupsQuery := `SELECT 
-		id, name
-		FROM groups;`
-
-	rows, err := dbs.groups.Query(groupsQuery)
+	rows, err := dbs.groups.Query("SELECT id,name FROM groups;")
 	if err != nil {
 		return serr.New(err)
 	}
+	defer rows.Close()
 
 	id := int64(0)
 	name := ""
@@ -194,7 +244,19 @@ type PermissionsGroupT struct {
 	Read, Reply, Post, Cancel, Supersede bool
 }
 
+const CmdGetPerms = DatabaseCommand("GetPerms")
+
 func (dbs *backendDbs) GetPerms(torid, group string) *PermissionsGroupT {
+	ret := make(chan []interface{})
+	dbs.Cmd <- DatabaseMessage{
+		Cmd:  CmdGetPerms,
+		Args: []interface{}{torid, group, ret},
+	}
+	rv := <-ret
+	return rv[0].(*PermissionsGroupT)
+}
+
+func (dbs *backendDbs) getPerms(torid, group string) *PermissionsGroupT {
 	slog.Info("E GetPerms", "torid", torid, "group", group)
 
 	p := &PermissionsGroupT{}
@@ -238,18 +300,36 @@ func (dbs *backendDbs) GetPerms(torid, group string) *PermissionsGroupT {
 	return p
 }
 
-func (dbs *backendDbs) NewGroup(name, description string, card vcard.Card) error {
+const CmdNewGroup = DatabaseCommand("NewGroup")
+
+func (dbs *backendDbs) NewGroup(name, description string, card vcard.Card) (map[string]*sql.DB, error) {
+	ret := make(chan []interface{})
+	dbs.Cmd <- DatabaseMessage{
+		Cmd:  CmdNewGroup,
+		Args: []interface{}{name, description, card, ret},
+	}
+
+	res := <-ret
+
+	err, ok := res[1].(error)
+	if !ok {
+		return res[0].(map[string]*sql.DB), err
+	}
+	return res[0].(map[string]*sql.DB), nil
+}
+
+func (dbs *backendDbs) newGroup(name, description string, card vcard.Card) (map[string]*sql.DB, error) {
 
 	res, err := dbs.groups.Exec("INSERT INTO groups(name) VALUES(?);", name)
 	if err != nil {
 		slog.Info("Error NewGroup INSERT to do db stuff at insert", "error", err)
-		return serr.New(err)
+		return dbs.groupArticles, serr.New(err)
 	}
 
 	groupId, err := res.LastInsertId()
 	if err != nil {
 		slog.Info("Error getting inserted rowid to do db stuff at last id", "error", err)
-		return serr.New(err)
+		return dbs.groupArticles, serr.New(err)
 	}
 
 	slog.Info("Last inserted rowid to do db stuff at", "groupid", groupId)
@@ -257,21 +337,21 @@ func (dbs *backendDbs) NewGroup(name, description string, card vcard.Card) error
 	db, err := sql.Open("sqlite3", fmt.Sprintf("%s/groups/%x.db", dbs.path, groupId))
 	if err != nil {
 		slog.Info("Error opening NewGroup database id", "name", name, "error", err)
-		return serr.New(err)
+		return dbs.groupArticles, serr.New(err)
 	}
 
 	if msg, err := db.Exec(createArticleIndexDB); err != nil {
 		slog.Info("FAILED Create article index DB database query", "path", dbs.path, "error", err, "msg", msg, "createArticleIndexDB", createArticleIndexDB)
-		return serr.New(err)
+		return dbs.groupArticles, serr.New(err)
 	}
 
 	if msg, err := db.Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", "description", description); err != nil {
 		slog.Info("FAILED Upserting group config value", "name", name, "description", description, "error", err, "msg", msg)
-		return serr.New(err)
+		return dbs.groupArticles, serr.New(err)
 	}
 	if msg, err := db.Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", "flags", "flags"); err != nil {
 		slog.Info("FAILED Upserting group config value", "name", name, "description", description, "error", err, "msg", msg)
-		return serr.New(err)
+		return dbs.groupArticles, serr.New(err)
 	}
 
 	for _, v := range card["X-KW-PERMS"] {
@@ -284,7 +364,7 @@ func (dbs *backendDbs) NewGroup(name, description string, card vcard.Card) error
 
 		if msg, err := db.Exec("INSERT OR REPLACE INTO perms (torid,read,reply,post,cancel,supersede) VALUES (?,?,?,?,?,?)", torid, read, reply, post, cancel, supersede); err != nil {
 			slog.Info("FAILED Upserting group config value", "name", name, "description", description, "error", err, "msh", msg)
-			return serr.New(err)
+			return dbs.groupArticles, serr.New(err)
 		}
 	}
 
@@ -292,10 +372,27 @@ func (dbs *backendDbs) NewGroup(name, description string, card vcard.Card) error
 	dbs.groupArticlesName2Int[name] = groupId
 	dbs.groupArticlesName2Hex[name] = strconv.FormatInt(groupId, 16)
 
-	return nil
+	return dbs.groupArticles, nil
 }
 
+const CmdGetArticleBySignature = DatabaseCommand("GetArticleBySignature")
+
 func (dbs *backendDbs) GetArticleBySignature(signature string) (*nntp.Article, error) {
+	ret := make(chan []interface{})
+	dbs.Cmd <- DatabaseMessage{
+		Cmd:  CmdGetArticleBySignature,
+		Args: []interface{}{signature, ret},
+	}
+
+	res := <-ret
+	err, ok := res[1].(error)
+	if !ok {
+		return res[0].(*nntp.Article), err
+	}
+	return res[0].(*nntp.Article), nil
+}
+
+func (dbs *backendDbs) getArticleBySignature(signature string) (*nntp.Article, error) {
 
 	message, err := os.ReadFile(dbs.path + "/articles/" + signature)
 	if err != nil {
@@ -318,7 +415,26 @@ func (dbs *backendDbs) GetArticleBySignature(signature string) (*nntp.Article, e
 	return article, nil
 }
 
+const CmdGetArticleById = DatabaseCommand("GetArticleById")
+
 func (dbs *backendDbs) GetArticleById(msgId string) (*nntp.Article, error) {
+	ret := make(chan []interface{})
+	dbs.Cmd <- DatabaseMessage{
+		Cmd:  CmdGetArticleById,
+		Args: []interface{}{msgId, ret},
+	}
+
+	res := <-ret
+
+	err, ok := res[1].(error)
+	if !ok {
+		return res[0].(*nntp.Article), err
+	}
+
+	return res[0].(*nntp.Article), nil
+}
+
+func (dbs *backendDbs) getArticleById(msgId string) (*nntp.Article, error) {
 
 	slog.Info("GetArticleById", "msgId", msgId)
 
@@ -333,7 +449,7 @@ func (dbs *backendDbs) GetArticleById(msgId string) (*nntp.Article, error) {
 		return nil, serr.New(nntpserver.ErrInvalidArticleNumber)
 	}
 
-	article, err := dbs.GetArticleBySignature(signature)
+	article, err := dbs.getArticleBySignature(signature)
 	if err != nil {
 		slog.Info("GetArticleById Failed to get article by signature", "msgId", msgId, "signature", signature, "error", err)
 		return nil, serr.New(nntpserver.ErrInvalidArticleNumber)
@@ -439,27 +555,48 @@ func (dbs *backendDbs) CancelMessage(from, msgId, newsgroups string, cmf message
 	return nil
 }
 
-func (dbs *backendDbs) OpenArticlesDB(id int) (*sql.DB, error) {
+/*
+func (dbs *backendDbs) openArticlesDB(id int) (*sql.DB, error) {
 
-	db, err := sql.Open("sqlite3", fmt.Sprintf("%s/groups/%x.db", dbs.path, id))
-	if err != nil {
-		slog.Info("FAILED Open OpenArticleDB Failed", "id", id, "error", err)
-		return nil, serr.New(err)
+		db, err := sql.Open("sqlite3", fmt.Sprintf("%s/groups/%x.db", dbs.path, id))
+		if err != nil {
+			slog.Info("FAILED Open OpenArticleDB Failed", "id", id, "error", err)
+			return nil, serr.New(err)
+		}
+
+		if msg, err := db.Exec(createArticlesDB); err != nil {
+			slog.Info("FAILED Create DB OpenArticleDB QUERY", "id", id, "error", err, "msg", msg)
+			return db, serr.New(err)
+		} else {
+			slog.Info("SUCCESS Create DB OpenArticleDB QUERY", "id", id, "error", err, "msg", msg)
+		}
+
+		slog.Info("OpenArticleDB SUCCESS", "id", id)
+
+		return db, nil
 	}
+*/
 
-	if msg, err := db.Exec(createArticlesDB); err != nil {
-		slog.Info("FAILED Create DB OpenArticleDB QUERY", "id", id, "error", err, "msg", msg)
-		return db, serr.New(err)
-	} else {
-		slog.Info("SUCCESS Create DB OpenArticleDB QUERY", "id", id, "error", err, "msg", msg)
-	}
-
-	slog.Info("OpenArticleDB SUCCESS", "id", id)
-
-	return db, nil
-}
+const CmdConfigSet = DatabaseCommand("ConfigSet")
 
 func (dbs *backendDbs) ConfigSet(key string, val interface{}) error {
+	ret := make(chan []interface{})
+	dbs.Cmd <- DatabaseMessage{
+		Cmd:  CmdConfigSet,
+		Args: []interface{}{key, val, ret},
+	}
+
+	res := <-ret
+
+	err, ok := res[1].(error)
+	if !ok {
+		return err
+	}
+
+	return nil
+}
+
+func (dbs *backendDbs) configSet(key string, val interface{}) error {
 	slog.Info("Attempting to uupsert key[%#v] val[%#v]", key, val)
 	if msg, err := dbs.config.Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", key, val); err != nil {
 		slog.Info("FAILED Upserting config value", "path", dbs.path, "error", err, "msg", msg, "query", createArticleIndexDB)
@@ -486,7 +623,26 @@ func (dbs *backendDbs) ConfigGetGetBytes(key string) ([]byte, error) {
 	return val, nil
 }
 
+const CmdConfigGetString = DatabaseCommand("ConfigGetString")
+
 func (dbs *backendDbs) ConfigGetString(key string) (string, error) {
+	ret := make(chan []interface{})
+	dbs.Cmd <- DatabaseMessage{
+		Cmd:  CmdConfigGetString,
+		Args: []interface{}{key, ret},
+	}
+
+	//a := errors.Join()
+	res := <-ret
+
+	err, ok := res[1].(error)
+	if !ok {
+		return res[0].(string), err
+	}
+
+	return res[0].(string), nil
+}
+func (dbs *backendDbs) configGetString(key string) (string, error) {
 	rows := dbs.config.QueryRow("SELECT val FROM config WHERE key=?", key)
 	val := string("")
 	if err := rows.Scan(&val); err != nil {

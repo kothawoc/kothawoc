@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/cretz/bine/torutil/ed25519"
 
@@ -15,8 +14,10 @@ func authCB(s ed25519.PublicKey) bool {
 	return true
 }
 
-func server(tc *torutils.TorCon, key ed25519.PrivateKey) {
+func server(tc *torutils.TorCon, key ed25519.PrivateKey, addrChan chan<- string) {
 	onion, _ := tc.Listen(80, key)
+	addrChan <- onion.ID
+	close(addrChan)
 
 	fmt.Printf("SERVER Listening: [%v]\n", onion)
 	//defer listenCancel()
@@ -61,15 +62,15 @@ func main() {
 
 	fmt.Printf("TC Tor connected: [%v]\n", tc)
 
-	go server(tc, key)
-
-	<-time.After(time.Second * 10)
+	addrChan := make(chan string)
+	go server(tc, key, addrChan)
+	address := <-addrChan
 
 	fmt.Printf("Starting Client\n")
 	for {
 
 		fmt.Printf("CLIENT Dialing\n")
-		conn, err := tc.Dial("tcp", "addxb2stt45nwbcv64aglgpz5r65m4ljgzp7mdelrt3oxhej3uykmdid.onion:80")
+		conn, err := tc.Dial("tcp", address+".onion:80")
 
 		fmt.Printf("CLIENT Dialing response [%v][%v]\n", conn, err)
 		if err != nil {
@@ -77,7 +78,7 @@ func main() {
 			return
 		}
 
-		authed, err := tc.ClientHandshake(conn, key, "addxb2stt45nwbcv64aglgpz5r65m4ljgzp7mdelrt3oxhej3uykmdid")
+		authed, err := tc.ClientHandshake(conn, kt, address)
 		fmt.Printf("CLIENT Authed response [%v][%v]\n", authed, err)
 		if err != nil {
 			fmt.Printf("CLIENT Error Dialer connect: [%v]\n", err)
