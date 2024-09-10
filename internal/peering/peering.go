@@ -12,6 +12,7 @@ import (
 	"github.com/cretz/bine/torutil/ed25519"
 
 	nntpclient "github.com/kothawoc/go-nntp/client"
+	"github.com/kothawoc/kothawoc/internal/databases"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/keytool"
 	"github.com/kothawoc/kothawoc/pkg/messages"
@@ -27,12 +28,6 @@ CREATE TABLE IF NOT EXISTS peers (
 	name TEXT NOT NULL
 	);
 */
-
-type BackendDbs struct {
-	Path                            string
-	Articles, Config, Groups, Peers *sql.DB
-	GroupArticles                   map[string]*sql.DB
-}
 
 type PeeringCommand string
 
@@ -54,7 +49,7 @@ type PeeringMessage struct {
 type Peer struct {
 	Id        int
 	Tc        *torutils.TorCon
-	Dbs       BackendDbs
+	Dbs       databases.BackendDbs
 	Conn      net.Conn
 	PeerTorId string
 	MyTorId   string
@@ -66,7 +61,7 @@ type Peer struct {
 	Cmd       chan PeeringMessage
 }
 
-func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, myKey, peerKey keytool.EasyEdKey, dbs BackendDbs) (*Peer, error) {
+func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, myKey, peerKey keytool.EasyEdKey, dbs databases.BackendDbs) (*Peer, error) {
 
 	myTorId, _ := myKey.TorId()
 	peerTorId, _ := peerKey.TorId()
@@ -302,12 +297,12 @@ type Peers struct {
 	MyKey keytool.EasyEdKey
 	Key   ed25519.PrivateKey
 	Tc    *torutils.TorCon
-	DBs   BackendDbs
+	DBs   databases.BackendDbs
 	Cmd   chan PeeringMessage
 	Exit  chan interface{}
 }
 
-func NewPeers(tc *torutils.TorCon, myKey keytool.EasyEdKey, DBs BackendDbs) (*Peers, error) {
+func NewPeers(tc *torutils.TorCon, myKey keytool.EasyEdKey, DBs *databases.BackendDbs) (*Peers, error) {
 	Peers := &Peers{
 		Conns: make(map[string]*Peer),
 		Cmd:   make(chan PeeringMessage, 10),

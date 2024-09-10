@@ -119,7 +119,7 @@ func (c *Client) ConfigGetInt64(key string) (int64, error) {
 }
 
 func (c *Client) ConfigGetGetBytes(key string) ([]byte, error) {
-	return c.be.DBs.ConfigGetGetBytes(key)
+	return c.be.DBs.ConfigGetBytes(key)
 }
 
 func (c *Client) ConfigGetString(key string) (string, error) {

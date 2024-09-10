@@ -1,15 +1,9 @@
 package nntpbackend
 
 import (
-	"bytes"
-	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
-	"net/mail"
-	"net/textproto"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +12,7 @@ import (
 
 	"github.com/kothawoc/go-nntp"
 	nntpserver "github.com/kothawoc/go-nntp/server"
+	"github.com/kothawoc/kothawoc/internal/databases"
 	"github.com/kothawoc/kothawoc/internal/peering"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/keytool"
@@ -57,7 +52,7 @@ const (
 func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error) {
 
 	os.MkdirAll(fmt.Sprintf("%s/articles", path), 0700)
-	dbs, err := NewBackendDBs(path)
+	dbs, err := databases.NewBackendDbs(path)
 
 	if err != nil {
 		return nil, serr.New(err)
@@ -75,15 +70,15 @@ func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error)
 
 	key, _ := dbs.ConfigGetDeviceKey()
 	//tpk, _ := key.TorPrivKey()
-	nDBs := peering.BackendDbs{
-		Articles:      dbs.articles,
-		Config:        dbs.config,
-		Groups:        dbs.groups,
-		Peers:         dbs.peers,
-		GroupArticles: dbs.groupArticles,
-	}
+	//nDBs := peering.BackendDbs{
+	//	Articles:      dbs.articles,
+	//	Config:        dbs.config,
+	//	Groups:        dbs.groups,
+	//	Peers:         dbs.peers,
+	//	GroupArticles: dbs.groupArticles,
+	//}
 
-	peers, err := peering.NewPeers(tc, key, nDBs)
+	peers, err := peering.NewPeers(tc, key, dbs)
 	if err != nil {
 		return nil, serr.New(err)
 	}
@@ -105,57 +100,62 @@ func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error)
 }
 
 type DBs struct {
-	*backendDbs
+	*databases.BackendDbs
 }
 
 type NntpBackend struct {
 	ConfigPath string
 	Peers      *peering.Peers
-	DBs        *backendDbs
+	DBs        *databases.BackendDbs
 }
 
 func (be *NntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group, error) {
 
 	slog.Info("E ListGroups")
 
-	retChan := make(chan *nntp.Group)
+	a, b := be.DBs.ListGroups(session)
 
-	row, err := be.DBs.groups.Query("SELECT id, name FROM groups;")
-	if err != nil {
-		return nil, serr.New(err)
-	}
-	id := int64(0)
-	name := ""
-	go func() {
-		for row.Next() {
-			err := row.Scan(&id, &name)
+	return a, b
+	/*
+		retChan := make(chan *nntp.Group)
 
-			slog.Info("Get grouplist", "id", id, "name", name)
-			if err != nil {
-				slog.Info("Error in grouplist", "error", err)
-				return
-			}
-			if perms := be.DBs.GetPerms(session["Id"], name); perms != nil && !perms.Read {
-				//	if !be.DBs.GetPerms(session["Id"], name).Read {
-				continue
-			}
-
-			grp, err := be.GetGroup(session, name)
-
-			if err != nil {
-
-				slog.Info("Error 2 in grouplist", "error", err)
-				return
-				//	return nil, err
-			}
-
-			retChan <- grp
-
+		row, err := be.DBs.groups.Query("SELECT id, name FROM groups;")
+		if err != nil {
+			return nil, serr.New(err)
 		}
-		close(retChan)
-	}()
+		id := int64(0)
+		name := ""
+		go func() {
+			for row.Next() {
+				err := row.Scan(&id, &name)
 
-	return retChan, nil
+				slog.Info("Get grouplist", "id", id, "name", name)
+				if err != nil {
+					slog.Info("Error in grouplist", "error", err)
+					return
+				}
+				if perms := be.DBs.GetPerms(session["Id"], name); perms != nil && !perms.Read {
+					//	if !be.DBs.GetPerms(session["Id"], name).Read {
+					continue
+				}
+
+				grp, err := be.GetGroup(session, name)
+
+				if err != nil {
+
+					slog.Info("Error 2 in grouplist", "error", err)
+					return
+					//	return nil, err
+				}
+
+				retChan <- grp
+
+			}
+			close(retChan)
+		}()
+
+		return retChan, nil
+	*/
 }
 
 func (be *NntpBackend) GetGroup(session map[string]string, groupName string) (*nntp.Group, error) {
@@ -167,62 +167,71 @@ func (be *NntpBackend) GetGroup(session map[string]string, groupName string) (*n
 		return nil, nntpserver.ErrNoSuchGroup
 	}
 
-	if articles, ok := be.DBs.groupArticles[groupName]; ok {
+	a, b := be.DBs.GetGroup(session, groupName)
 
-		row := articles.QueryRow("SELECT val FROM config WHERE key=\"description\"")
-		var description string
-		err := row.Scan(&description)
-		if err != nil {
-			slog.Info("FAILED 1 Query get group description", "groupName", groupName, "description", description, "error", err)
+	return a, b
+	/*
+			if articles, ok := be.DBs.groupArticles[groupName]; ok {
+
+				row := articles.QueryRow("SELECT val FROM config WHERE key=\"description\"")
+				var description string
+				err := row.Scan(&description)
+				if err != nil {
+					slog.Info("FAILED 1 Query get group description", "groupName", groupName, "description", description, "error", err)
+					return nil, nntpserver.ErrNoSuchGroup
+				}
+
+				row = articles.QueryRow("SELECT val FROM config WHERE key=\"flags\"")
+				var flags string
+				err = row.Scan(&flags)
+				if err != nil {
+					slog.Info("FAILED 2 Query get group description", "groupName", groupName, "description", description, "error", err)
+					return nil, nntpserver.ErrNoSuchGroup
+				}
+				posting := nntp.PostingPermitted
+				if flags == "n" {
+					posting = nntp.PostingNotPermitted
+				}
+				if flags == "m" {
+					posting = nntp.PostingModerated
+				}
+
+				var high, low, count int64
+				row = articles.QueryRow(`SELECT
+		  			COALESCE((SELECT id FROM articles ORDER BY id DESC LIMIT 1), 0) AS high,
+		    		COALESCE((SELECT id FROM articles ORDER BY id ASC LIMIT 1), 0) AS low,
+		    		COALESCE((SELECT COUNT(id) FROM articles), 0) AS count;`)
+				err = row.Scan(&high, &low, &count)
+				if err != nil && !errors.Is(err, sql.ErrNoRows) {
+					slog.Info("FAIL GetGroup count scan", "groupName", groupName, "error", err)
+					return nil, err
+				}
+
+				ret := &nntp.Group{
+					Name:        groupName,
+					Description: description,
+					Count:       count,
+					Low:         low,
+					High:        high,
+					Posting:     posting,
+				}
+
+				slog.Info("E GetGroup returning", "ret", ret)
+				return ret, nil
+			}
+
+			slog.Info("E GetGroup not found", "groupName", groupName, "groupdb", be.DBs.groupArticles)
 			return nil, nntpserver.ErrNoSuchGroup
-		}
-
-		row = articles.QueryRow("SELECT val FROM config WHERE key=\"flags\"")
-		var flags string
-		err = row.Scan(&flags)
-		if err != nil {
-			slog.Info("FAILED 2 Query get group description", "groupName", groupName, "description", description, "error", err)
-			return nil, nntpserver.ErrNoSuchGroup
-		}
-		posting := nntp.PostingPermitted
-		if flags == "n" {
-			posting = nntp.PostingNotPermitted
-		}
-		if flags == "m" {
-			posting = nntp.PostingModerated
-		}
-
-		var high, low, count int64
-		row = articles.QueryRow(`SELECT
-  			COALESCE((SELECT id FROM articles ORDER BY id DESC LIMIT 1), 0) AS high,
-    		COALESCE((SELECT id FROM articles ORDER BY id ASC LIMIT 1), 0) AS low,
-    		COALESCE((SELECT COUNT(id) FROM articles), 0) AS count;`)
-		err = row.Scan(&high, &low, &count)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			slog.Info("FAIL GetGroup count scan", "groupName", groupName, "error", err)
-			return nil, err
-		}
-
-		ret := &nntp.Group{
-			Name:        groupName,
-			Description: description,
-			Count:       count,
-			Low:         low,
-			High:        high,
-			Posting:     posting,
-		}
-
-		slog.Info("E GetGroup returning", "ret", ret)
-		return ret, nil
-	}
-
-	slog.Info("E GetGroup not found", "groupName", groupName, "groupdb", be.DBs.groupArticles)
-	return nil, nntpserver.ErrNoSuchGroup
+	*/
 }
 
 func (be *NntpBackend) GetArticleWithNoGroup(session map[string]string, id string) (*nntp.Article, error) {
 
 	slog.Info("E GetArticleWithNoGroup")
+
+	ret, err := be.DBs.GetArticleById(id)
+
+	return ret, err
 
 	return nil, nntpserver.ErrInvalidArticleNumber
 }
@@ -237,53 +246,58 @@ func (be *NntpBackend) GetArticle(session map[string]string, group *nntp.Group, 
 	if !be.DBs.GetPerms(session["Id"], group.Name).Read {
 		return nil, nntpserver.ErrInvalidArticleNumber
 	}
+
+	ret, err := be.DBs.GetArticleById(grpMsgId)
+
+	return ret, err
 	// TODO, check the actual articles DB config to see
 	//       if the user can view the article.
 	// and it is actually in the db
 	//articles := be.DBs.groupArticles[group.Name]
-	articles := be.DBs.articles
+	/*
+		articles := be.DBs.articles
 
-	query := ""
-	// if the id is an int, get the message id
-	if _, err := strconv.ParseInt(grpMsgId, 10, 64); err == nil {
-		query = "SELECT id, messageid, signature FROM articles WHERE id=?"
-	} else {
-		query = "SELECT id, messageid, signature FROM articles WHERE messageid=?"
-	}
+		query := ""
+		// if the id is an int, get the message id
+		if _, err := strconv.ParseInt(grpMsgId, 10, 64); err == nil {
+			query = "SELECT id, messageid, signature FROM articles WHERE id=?"
+		} else {
+			query = "SELECT id, messageid, signature FROM articles WHERE messageid=?"
+		}
 
-	slog.Info("GetArticle  SQL", "query", query)
+		slog.Info("GetArticle  SQL", "query", query)
 
-	row := articles.QueryRow(query, grpMsgId)
+		row := articles.QueryRow(query, grpMsgId)
 
-	id := int64(0)
-	messageid := ""
-	signature := ""
-	err := row.Scan(&id, &messageid, &signature)
-	if err != nil {
-		slog.Info("Failed to open article final row scan [%s] [%v]", grpMsgId, err)
-		return nil, nntpserver.ErrInvalidArticleNumber
-	}
+		id := int64(0)
+		messageid := ""
+		signature := ""
+		err := row.Scan(&id, &messageid, &signature)
+		if err != nil {
+			slog.Info("Failed to open article final row scan [%s] [%v]", grpMsgId, err)
+			return nil, nntpserver.ErrInvalidArticleNumber
+		}
 
-	message, err := os.ReadFile(be.ConfigPath + "/articles/" + signature)
-	if err != nil {
-		return nil, err
-	}
-	body := (strings.SplitN(string(message), "\r\n\r\n", 2))[1]
-	msg, err := mail.ReadMessage(bytes.NewReader(message))
-	if err != nil {
-		return nil, err
-	}
+		message, err := os.ReadFile(be.ConfigPath + "/articles/" + signature)
+		if err != nil {
+			return nil, err
+		}
+		body := (strings.SplitN(string(message), "\r\n\r\n", 2))[1]
+		msg, err := mail.ReadMessage(bytes.NewReader(message))
+		if err != nil {
+			return nil, err
+		}
 
-	article := &nntp.Article{
-		Header: textproto.MIMEHeader(msg.Header),
-		Body:   msg.Body,
-		Bytes:  len([]byte(body)),
-		Lines:  strings.Count(body, "\n"),
-	}
+		article := &nntp.Article{
+			Header: textproto.MIMEHeader(msg.Header),
+			Body:   msg.Body,
+			Bytes:  len([]byte(body)),
+			Lines:  strings.Count(body, "\n"),
+		}
 
-	slog.Info("GetArticle return", "article", article, "error", err)
-
-	return article, nil
+		slog.Info("GetArticle return", "article", article, "error", err)
+	*/
+	//return article, nil
 }
 
 func (be *NntpBackend) GetArticles(session map[string]string, group *nntp.Group, from, to int64) (<-chan nntpserver.NumberedArticle, error) {
@@ -293,22 +307,25 @@ func (be *NntpBackend) GetArticles(session map[string]string, group *nntp.Group,
 		//if !be.DBs.GetPerms(session["Id"], group.Name).Read {
 		return nil, nntpserver.ErrInvalidArticleNumber
 	}
+
+	list, err := be.DBs.ListArticles(session, group.Name, from, to)
+
 	retChan := make(chan nntpserver.NumberedArticle, 10)
 
-	if from > to {
-		a := from
-		to = from
-		from = a
-	}
+	//	if from > to {
+	//		a := from
+	//		to = from
+	//		from = a
+	//	}
 
-	row, err := be.DBs.groupArticles[group.Name].Query("SELECT id FROM articles WHERE id>=? and id<=?;", from, to)
-	if err != nil {
-		return nil, err
-	}
-	id := int64(0)
+	//	row, err := be.DBs.groupArticles[group.Name].Query("SELECT id FROM articles WHERE id>=? and id<=?;", from, to)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//id := int64(0)
 	go func() {
-		for row.Next() {
-			err := row.Scan(&id)
+		for id := range list {
+			//		err := row.Scan(&id)
 
 			slog.Info("Get Articles Scan", "id", id)
 			if err != nil {
@@ -358,7 +375,7 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		sig := msg.Article.Header.Get(messages.SignatureHeader)
 		if sig == "" {
 			slog.Info("Signing new posted message")
-			deviceKey, _ := be.DBs.ConfigGetGetBytes("deviceKey")
+			deviceKey, _ := be.DBs.ConfigGetBytes("deviceKey")
 			if msg.Article.Header.Get("Date") == "" {
 				msg.Article.Header.Set("Date", time.Now().UTC().Format(time.RFC1123Z))
 			}
@@ -377,7 +394,7 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		return nntpserver.ErrPostingNotPermitted
 	}
 
-	deviceKey, _ := be.DBs.ConfigGetGetBytes("deviceKey")
+	deviceKey, _ := be.DBs.ConfigGetBytes("deviceKey")
 
 	//	torId := torutils.EncodePublicKey(ed25519.PrivateKey(deviceKey).PublicKey())
 	myKey := keytool.EasyEdKey{}
@@ -440,11 +457,15 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		if post := be.DBs.GetPerms(session["Id"], group); post != nil && !post.Post {
 			continue
 		}
-		row := be.DBs.groups.QueryRow("SELECT id,name FROM groups WHERE name=?;", group)
 
-		var name string
-		var id int64
-		err := row.Scan(&id, &name)
+		/*
+			row := be.DBs.groups.QueryRow("SELECT id,name FROM groups WHERE name=?;", group)
+
+			var name string
+			var id int64
+			err := row.Scan(&id, &name)
+		*/
+		id, err := be.DBs.GetGroupNumber(group)
 
 		if err != nil {
 			slog.Info("FAILED POST article find group", "id", id, "group", group, "error", err)
@@ -464,64 +485,84 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 
 		// check if it's a local connection before signing it
 		// TODO check if local device to sign it.
-		deviceKey, _ := be.DBs.ConfigGetGetBytes("deviceKey")
+		//	deviceKey, _ := be.DBs.ConfigGetBytes("deviceKey")
 
-		kt := keytool.EasyEdKey{}
-		kt.SetTorPrivateKey(ed25519.PrivateKey(deviceKey))
+		//	kt := keytool.EasyEdKey{}
+		//	kt.SetTorPrivateKey(ed25519.PrivateKey(deviceKey))
 
-		msg.Sign(kt)
+		//kt, _ := be.DBs.ConfigGetDeviceKey()
+
+		//msg.Sign(kt)
+
 		//verified := msg.Verify()
 
-		signature := article.Header.Get(messages.SignatureHeader)
-		messageId := article.Header.Get("Message-Id")
-		insert := `INSERT INTO articles(messageid,signature,refs) VALUES(?,?,?);`
-
-		res, err := be.DBs.articles.Exec(insert, messageId, signature, len(postableGroups))
+		articleId, err := be.DBs.StoreArticle(msg)
 		if err != nil {
-			slog.Info("Ouch abc Error insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
-			return err
-		} else {
-			slog.Info("SUCCESS  insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
-
-		}
-
-		articleId, err := res.LastInsertId()
-		if err != nil {
-			slog.Info("Error getting inserted rowid to do db stuff at", "error", err)
 			return err
 		}
 
-		slog.Info("Last inserted rowid to do db stuff at ", "articleId", articleId)
+		/*
+			signature := article.Header.Get(messages.SignatureHeader)
+			messageId := article.Header.Get("Message-Id")
+			insert := `INSERT INTO articles(messageid,signature,refs) VALUES(?,?,?);`
 
-		err = os.WriteFile(be.ConfigPath+"/articles/"+signature, []byte(msg.RawMail()), 0600)
-
-		if err != nil {
-			slog.Info("Error writing file Ouch def Error insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
-			return err
-		}
-
-		be.Peers.DistributeArticle(*msg)
-
-		for group := range postableGroups {
-			insert := "INSERT INTO articles(id,messageid) VALUES(?,?);"
-
-			_, err = be.DBs.groupArticles[group].Exec(insert, articleId, messageId)
+			res, err := be.DBs.articles.Exec(insert, messageId, signature, len(postableGroups))
 			if err != nil {
-				slog.Info("Ouch def Error insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
+				slog.Info("Ouch abc Error insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
 				return err
 			} else {
 				slog.Info("SUCCESS  insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
+
 			}
 
-			row := be.DBs.articles.QueryRow("UPDATE articles SET refs=refs + 1 WHERE messageid=? RETURNING refs;", messageId)
-			refs := int64(0)
-			err = row.Scan(&refs)
+			articleId, err := res.LastInsertId()
+			if err != nil {
+				slog.Info("Error getting inserted rowid to do db stuff at", "error", err)
+				return err
+			}
+
+			slog.Info("Last inserted rowid to do db stuff at ", "articleId", articleId)
+
+			err = os.WriteFile(be.ConfigPath+"/articles/"+signature, []byte(msg.RawMail()), 0600)
+
+			if err != nil {
+				slog.Info("Error writing file Ouch def Error insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
+				return err
+			}
+		*/
+		be.Peers.DistributeArticle(*msg)
+
+		for group := range postableGroups {
+
+			err := be.DBs.AddArticleToGroup(group, article.Header.Get("Message-Id"), articleId)
 			if err != nil {
 				slog.Info("Ouch update refs def Error insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
 				return err
 			} else {
 				slog.Info("SUCCESS update refs insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
 			}
+			/*
+
+				insert := "INSERT INTO articles(id,messageid) VALUES(?,?);"
+
+				_, err = be.DBs.groupArticles[group].Exec(insert, articleId, messageId)
+				if err != nil {
+					slog.Info("Ouch def Error insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
+					return err
+				} else {
+					slog.Info("SUCCESS  insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
+				}
+
+				row := be.DBs.articles.QueryRow("UPDATE articles SET refs=refs + 1 WHERE messageid=? RETURNING refs;", messageId)
+				refs := int64(0)
+				err = row.Scan(&refs)
+				if err != nil {
+					slog.Info("Ouch update refs def Error insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
+					return err
+				} else {
+					slog.Info("SUCCESS update refs insert article to do db stuff at", "error", err, "messageId", article.Header.Get("Message-Id"))
+				}
+			*/
 
 		}
 
