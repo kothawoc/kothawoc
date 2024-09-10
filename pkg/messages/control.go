@@ -2,7 +2,6 @@ package messages
 
 import (
 	"bytes"
-	"database/sql"
 	"log/slog"
 	"net/textproto"
 	"strings"
@@ -55,8 +54,8 @@ Allbery & Lindsey           Standards Track                    [Page 37] - [Page
 */
 
 type ControMesasgeFunctions struct {
-	NewGroup   func(name, description string, card vcard.Card) (map[string]*sql.DB, error)
-	AddPeer    func(name string, groupsdbs map[string]*sql.DB) error
+	NewGroup   func(name, description string, card vcard.Card) error
+	AddPeer    func(name string) error
 	RemovePeer func(name string) error
 	Cancel     func(from, messageid, newsgroups string, cmf ControMesasgeFunctions) error
 	Sendme     func(name, list, options string) error
@@ -114,7 +113,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions, session map[stri
 
 				}
 
-				groupDBs, err := cmf.NewGroup(splitCtl[1], description, card)
+				err := cmf.NewGroup(splitCtl[1], description, card)
 				if err != nil {
 					return serr.New(err)
 				}
@@ -123,7 +122,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions, session map[stri
 				if len(splitGroup) == 3 &&
 					splitGroup[0] == session["Id"] &&
 					splitGroup[1] == "peers" {
-					err := cmf.AddPeer(splitGroup[2], groupDBs)
+					err := cmf.AddPeer(splitGroup[2])
 					if err != nil {
 						return serr.New(err)
 					}

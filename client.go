@@ -275,13 +275,21 @@ func (c *Client) torServer(tc *torutils.TorCon, s *nntpserver.Server) error {
 					return false
 				}
 
-				row := c.be.Peers.DBs.Peers.QueryRow("SELECT COUNT(*) FROM peers WHERE torid=?", torId)
-				err = row.Scan(&match)
-				if err != nil {
-					slog.Info("Dodgy hacky auth FAILED for", "torid", torId, "error", err)
-					return false
-
+				peers, _ := c.be.DBs.GetPeerList()
+				for _, n := range peers {
+					if n == torId {
+						match = 1
+					}
 				}
+				/*
+					row := c.be.Peers.DBs.  .QueryRow("SELECT COUNT(*) FROM peers WHERE torid=?", torId)
+					err = row.Scan(&match)
+					if err != nil {
+						slog.Info("Dodgy hacky auth FAILED for", "torid", torId, "error", err)
+						return false
+
+					}
+				*/
 				if match == 1 {
 					slog.Info("Dodgy hacky auth accepted for", "torid", torId)
 					return true

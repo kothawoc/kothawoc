@@ -1,8 +1,6 @@
 package peering
 
 import (
-	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -49,7 +47,7 @@ type PeeringMessage struct {
 type Peer struct {
 	Id        int
 	Tc        *torutils.TorCon
-	Dbs       databases.BackendDbs
+	Dbs       *databases.BackendDbs
 	Conn      net.Conn
 	PeerTorId string
 	MyTorId   string
@@ -61,7 +59,7 @@ type Peer struct {
 	Cmd       chan PeeringMessage
 }
 
-func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, myKey, peerKey keytool.EasyEdKey, dbs databases.BackendDbs) (*Peer, error) {
+func NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, myKey, peerKey keytool.EasyEdKey, dbs *databases.BackendDbs) (*Peer, error) {
 
 	myTorId, _ := myKey.TorId()
 	peerTorId, _ := peerKey.TorId()
@@ -96,7 +94,7 @@ func (p *Peer) Worker() {
 	}()
 	defer close(p.Cmd)
 
-	gDB := p.Dbs.GroupArticles[p.GroupName]
+	//gDB := p.Dbs.GroupArticles[p.GroupName]
 
 	for {
 		select {
@@ -160,24 +158,28 @@ func (p *Peer) Worker() {
 						feed = sOpt[1]
 					}
 				}
-				query := "UPDATE OR INSERT config(key,val) VALUES(?,?) WHERE key=?"
-				gDB.Exec(query, "ControlMessages", cm)
-				gDB.Exec(query, "Feed", feed)
-				gDB.Exec("DELETE FROM subscriptions;")
-				/*
+				//query := "UPDATE OR INSERT config(key,val) VALUES(?,?) WHERE key=?"
+				p.Dbs.GroupConfigSet(p.GroupName, "ControlMessages", cm)
+				p.Dbs.GroupConfigSet(p.GroupName, "Feed", feed)
+				p.Dbs.GroupUpdateSubscriptions(p.GroupName, list)
 
-					CREATE TABLE IF NOT EXISTS subscriptions (
-						group TEXT NOT NULL UNIQUE
-					    );
+				/*
+					gDB.Exec("DELETE FROM subscriptions;")
+					/*
+
+						CREATE TABLE IF NOT EXISTS subscriptions (
+							group TEXT NOT NULL UNIQUE
+						    );
 
 				*/
+				/*
+					for _, i := range list {
+						query := "INSERT INTO subscriptions(group) VALUES(?);"
+						gDB.Exec(query, i)
+						slog.Info("INSERT INTO", "item", i, "query", query)
 
-				for _, i := range list {
-					query := "INSERT INTO subscriptions(group) VALUES(?);"
-					gDB.Exec(query, i)
-					slog.Info("INSERT INTO", "item", i, "query", query)
-
-				}
+					}
+				*/
 
 				slog.Info("debug:", "peerid", peerid, "list", list, "opts", opts)
 
@@ -207,15 +209,23 @@ func (p *Peer) SendMessages() {
 		return
 	}
 
-	gDB := p.Dbs.GroupArticles[p.GroupName]
-	if gDB == nil {
-		return
-	}
-	slog.Info("gdb val", "gDB", gDB)
+	/*
+		gDB := p.Dbs.GroupArticles[p.GroupName]
+		if gDB == nil {
+			return
+		}
+		slog.Info("gdb val", "gDB", gDB)
 
-	row := gDB.QueryRow("SELECT val FROM config WHERE key=?", "LastMessage")
-	lastMessage := int64(0)
-	err := row.Scan(&lastMessage)
+		row := gDB.QueryRow("SELECT val FROM config WHERE key=?", "LastMessage")
+		lastMessage := int64(0)
+		err := row.Scan(&lastMessage)
+		if err != nil {
+			slog.Info("Failed to find last sent message", "sqlErr", err)
+			return
+		}
+	*/
+	lastMessage, err := p.Dbs.GroupConfigGetInt64(p.GroupName, "LastMessage")
+
 	if err != nil {
 		slog.Info("Failed to find last sent message", "sqlErr", err)
 		return
@@ -223,33 +233,55 @@ func (p *Peer) SendMessages() {
 
 	//gDB.Exec(query, "ControlMessages", cm)
 	//gDB.Exec(query, "Feed", feed)
-
-	rows, err := p.Dbs.Articles.Query("SELECT * FROM articles WHERE id>?", lastMessage)
-	defer rows.Close()
-
-	for rows.Next() {
-		var id int
-		var torid, pubkey, name string
-		err := rows.Scan(&id, &torid, &pubkey, &name)
-
-		/*
-			CREATE TABLE IF NOT EXISTS articles (
-				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-				messageid TEXT NOT NULL UNIQUE,
-				signature TEXT NOT NULL,
-				refs INTEGER NOT NULL DEFAULT 0
-				);
-		*/
-		if err != nil {
-			continue
-			//		return nil, err
-		}
-		slog.Info("peerlist", "id", id, "torid", torid, "pubkey", pubkey, "name", name)
-		// NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, db *sql.DB, myKey keytool.EasyEdKey, peerKey keytool.EasyEdKey, dbs BackendDbs) (*Peer, error)
-		// dialup torid
-
+	art, err := p.Dbs.GetNextArticle(lastMessage)
+	if err != nil {
+		slog.Info("Failed to find last sent message", "sqlErr", err)
+		return
 	}
-	rows.Close()
+
+	msg := messages.NewMessageToolFromArticle(art.Article)
+
+	/*
+
+	   TODO: CHECK SECURITY AND SEE IF IT'S ALLOWED TO SEND
+
+	*/
+
+	err = p.Client.Post(strings.NewReader(msg.RawMail()))
+
+	if err != nil {
+		slog.Info("Failed to find last sent message", "sqlErr", err)
+		return
+	} else {
+		err := p.Dbs.GroupConfigSet(p.GroupName, "LastMessage", art.Num)
+		if err != nil {
+			slog.Info("Failed to find last sent message", "sqlErr", err)
+			return
+		}
+	}
+
+	/*
+		rows, err := p.Dbs.Articles.Query("SELECT * FROM articles WHERE id>?", lastMessage)
+		defer rows.Close()
+
+
+		for rows.Next() {
+			var id int
+			var torid, pubkey, name string
+			err := rows.Scan(&id, &torid, &pubkey, &name)
+
+
+			if err != nil {
+				continue
+				//		return nil, err
+			}
+			slog.Info("peerlist", "id", id, "torid", torid, "pubkey", pubkey, "name", name)
+			// NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, db *sql.DB, myKey keytool.EasyEdKey, peerKey keytool.EasyEdKey, dbs BackendDbs) (*Peer, error)
+			// dialup torid
+
+		}
+		rows.Close()
+	*/
 }
 
 func (p *Peer) Connect() {
@@ -297,7 +329,7 @@ type Peers struct {
 	MyKey keytool.EasyEdKey
 	Key   ed25519.PrivateKey
 	Tc    *torutils.TorCon
-	DBs   databases.BackendDbs
+	DBs   *databases.BackendDbs
 	Cmd   chan PeeringMessage
 	Exit  chan interface{}
 }
@@ -332,33 +364,50 @@ func (p *Peers) Worker() {
 			case CmdConnect:
 				errChan := cmd.Args[0].(chan error)
 
-				rows, err := p.DBs.Peers.Query("SELECT id,torid,pubkey,name FROM peers;")
+				peerList, err := p.DBs.GetPeerList()
 				if err != nil {
 					errChan <- serr.New(err)
 					close(errChan)
-					rows.Close()
 					continue
 					//	return nil, err
 				}
-				for rows.Next() {
-					var id int
-					var torid, pubkey, name string
-					err := rows.Scan(&id, &torid, &pubkey, &name)
-					if err != nil {
-						continue
-						//		return nil, err
-					}
-					slog.Info("peerlist", "id", id, "torid", torid, "pubkey", pubkey, "name", name)
-					// NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, db *sql.DB, myKey keytool.EasyEdKey, peerKey keytool.EasyEdKey, dbs BackendDbs) (*Peer, error)
+
+				for _, torid := range peerList {
 					peerKey := keytool.EasyEdKey{}
 					peerKey.SetTorId(torid)
 					conn, _ := NewPeer(p.Tc, p.Cmd, p.MyKey, peerKey, p.DBs)
 					p.Conns[torid] = conn
 					p.Conns[torid].Cmd <- cmd
-					// dialup torid
-
 				}
-				rows.Close()
+				/*
+					rows, err := p.DBs.Peers.Query("SELECT id,torid,pubkey,name FROM peers;")
+					if err != nil {
+						errChan <- serr.New(err)
+						close(errChan)
+						rows.Close()
+						continue
+						//	return nil, err
+					}
+					for rows.Next() {
+						var id int
+						var torid, pubkey, name string
+						err := rows.Scan(&id, &torid, &pubkey, &name)
+						if err != nil {
+							continue
+							//		return nil, err
+						}
+						slog.Info("peerlist", "id", id, "torid", torid, "pubkey", pubkey, "name", name)
+						// NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, db *sql.DB, myKey keytool.EasyEdKey, peerKey keytool.EasyEdKey, dbs BackendDbs) (*Peer, error)
+						peerKey := keytool.EasyEdKey{}
+						peerKey.SetTorId(torid)
+						conn, _ := NewPeer(p.Tc, p.Cmd, p.MyKey, peerKey, p.DBs)
+						p.Conns[torid] = conn
+						p.Conns[torid].Cmd <- cmd
+						// dialup torid
+
+					}
+					rows.Close()
+				*/
 				close(errChan)
 			case CmdDistribute:
 				for _, peer := range p.Conns {
@@ -370,41 +419,51 @@ func (p *Peers) Worker() {
 				torid := cmd.Args[0].(string)
 				p.Conns[torid].Cmd <- cmd
 				delete(p.Conns, torid)
-				res, err := p.DBs.Peers.Exec("DELETE FROM peers WHERE torid=?;", torid)
-				slog.Info("TRY REMOVE PEER DELETE", "error", err, "res", res)
+				//res, err := p.DBs.Peers.Exec("DELETE FROM peers WHERE torid=?;", torid)
+				//slog.Info("TRY REMOVE PEER DELETE", "error", err, "res", res)
 				//if err != nil {
 				//	errChan <- err
 				//	continue
 				//}
 
 			case CmdAddPeer:
-				var id int
-				var pubkey, name string
+
 				torid := cmd.Args[0].(string)
 				errChan := cmd.Args[1].(chan error)
 
-				row := p.DBs.Peers.QueryRow("SELECT id,torid,pubkey,name FROM peers WHERE torid=?;", torid)
-				err := row.Scan(&id, &torid, &pubkey, &name)
-				slog.Info("ADDING PEER", "torid", torid, "id", id, "error", err)
+				err := p.DBs.AddPeer(torid)
 				if err == nil {
 					errChan <- serr.Wrap(fmt.Errorf("Peer already exists %s=%s", "torid", torid), err)
 					continue
-				} else {
-					if !errors.Is(err, sql.ErrNoRows) {
-						errChan <- serr.Wrap(fmt.Errorf("Peer Add error %s=%s", "torid", torid), err)
-						continue
-					}
 				}
+				/*
+					var id int
+					var pubkey, name string
+					torid := cmd.Args[0].(string)
+					errChan := cmd.Args[1].(chan error)
 
-				myTorId, _ := p.MyKey.TorId()
-				gDB := p.DBs.GroupArticles[myTorId+".peers."+torid]
-				query := "UPDATE OR INSERT config(key,val) VALUES(?,?) WHERE key=?;"
-				gDB.Exec(query, "ControlMessages", "true")
-				gDB.Exec(query, "Feed", torid)
-				gDB.Exec(query, "LastMessage", 0)
+					row := p.DBs.Peers.QueryRow("SELECT id,torid,pubkey,name FROM peers WHERE torid=?;", torid)
+					err := row.Scan(&id, &torid, &pubkey, &name)
+					slog.Info("ADDING PEER", "torid", torid, "id", id, "error", err)
+					if err == nil {
+						errChan <- serr.Wrap(fmt.Errorf("Peer already exists %s=%s", "torid", torid), err)
+						continue
+					} else {
+						if !errors.Is(err, sql.ErrNoRows) {
+							errChan <- serr.Wrap(fmt.Errorf("Peer Add error %s=%s", "torid", torid), err)
+							continue
+						}
+					}
 
-				slog.Info("Adding peer", "id", id, "torid", torid, "pubkey", pubkey, "name", name)
+					myTorId, _ := p.MyKey.TorId()
+					gDB := p.DBs.GroupArticles[myTorId+".peers."+torid]
+					query := "UPDATE OR INSERT config(key,val) VALUES(?,?) WHERE key=?;"
+					gDB.Exec(query, "ControlMessages", "true")
+					gDB.Exec(query, "Feed", torid)
+					gDB.Exec(query, "LastMessage", 0)
 
+					slog.Info("Adding peer", "id", id, "torid", torid, "pubkey", pubkey, "name", name)
+				*/
 				// NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, db *sql.DB, myKey keytool.EasyEdKey, peerKey keytool.EasyEdKey, dbs BackendDbs) (*Peer, error)
 				peerKey := keytool.EasyEdKey{}
 				peerKey.SetTorId(torid)
@@ -415,12 +474,14 @@ func (p *Peers) Worker() {
 					errChan <- err
 					continue
 				}
-				res, err := p.DBs.Peers.Exec("INSERT INTO peers(torid,pubkey,name) VALUES(?,\"tmp\",\"\");", torid)
-				slog.Info("ERROR ADDPEER INSERT", "error", err, "res", res)
-				if err != nil {
-					errChan <- err
-					continue
-				}
+				/*
+					res, err := p.DBs.Peers.Exec("INSERT INTO peers(torid,pubkey,name) VALUES(?,\"tmp\",\"\");", torid)
+					slog.Info("ERROR ADDPEER INSERT", "error", err, "res", res)
+					if err != nil {
+						errChan <- err
+						continue
+					}
+				*/
 				p.Conns[torid] = conn
 				cmd.Cmd = CmdConnect
 				p.Conns[torid].Cmd <- cmd
@@ -437,14 +498,13 @@ func (p *Peers) Worker() {
 	}
 }
 
-func (p *Peers) AddPeer(torId string, pDBs map[string]*sql.DB) error {
+func (p *Peers) AddPeer(torId string) error {
 	a := p.DBs
-	a.GroupArticles = pDBs
 	p.DBs = a
 	err := make(chan error)
 	p.Cmd <- PeeringMessage{
 		Cmd:  CmdAddPeer,
-		Args: []interface{}{torId, pDBs, err},
+		Args: []interface{}{torId, err},
 	}
 
 	return <-err
