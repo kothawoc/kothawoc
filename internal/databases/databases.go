@@ -25,6 +25,10 @@ import (
 )
 
 type BackendDbs struct {
+	Cmd chan DatabaseMessage
+}
+
+type backendDbs struct {
 	Cmd                             chan DatabaseMessage
 	path                            string
 	articles, config, groups, peers *sql.DB
@@ -115,7 +119,7 @@ func openCreateDB(path, sqlQuery string) (*sql.DB, error) {
 
 func NewBackendDbs(path string) (*BackendDbs, error) {
 
-	dbs := &BackendDbs{path: path}
+	dbs := &backendDbs{path: path}
 
 	os.MkdirAll(path+"/groups", 0700)
 
@@ -151,9 +155,9 @@ func NewBackendDbs(path string) (*BackendDbs, error) {
 	dbs.openGroups()
 
 	dbs.Cmd = make(chan DatabaseMessage, 10)
-	go dbs.DbServer()
+	go dbs.dbServer()
 
-	return dbs, nil
+	return &BackendDbs{Cmd: dbs.Cmd}, nil
 }
 
 type DatabaseCommand string
@@ -162,7 +166,7 @@ type DatabaseMessage struct {
 	Args []interface{}
 }
 
-func (dbs *BackendDbs) DbServer() error {
+func (dbs *backendDbs) dbServer() error {
 	for {
 		cmd := <-dbs.Cmd
 		slog.Info("DB SERVER", "cmd", cmd.Cmd, "args", cmd.Args)
@@ -295,6 +299,7 @@ func (dbs *BackendDbs) DbServer() error {
 		case CmdGetNextArticle: // Args: []interface{}{lastMessage, ret},
 			ret := cmd.Args[1].(chan []interface{})
 			a, b := dbs.getNextArticle(cmd.Args[0].(int64))
+			slog.Info("next art", "a", a, "b", b)
 			ret <- []interface{}{a, b}
 			close(ret)
 
@@ -302,7 +307,7 @@ func (dbs *BackendDbs) DbServer() error {
 	}
 }
 
-func (dbs *BackendDbs) openGroups() error {
+func (dbs *backendDbs) openGroups() error {
 
 	rows, err := dbs.groups.Query("SELECT id,name FROM groups;")
 	if err != nil {
@@ -353,7 +358,7 @@ func (dbs *BackendDbs) GetPerms(torid, group string) *PermissionsGroupT {
 	return rv[0].(*PermissionsGroupT)
 }
 
-func (dbs *BackendDbs) getPerms(torid, group string) *PermissionsGroupT {
+func (dbs *backendDbs) getPerms(torid, group string) *PermissionsGroupT {
 	slog.Info("E GetPerms", "torid", torid, "group", group)
 
 	p := &PermissionsGroupT{}
@@ -408,14 +413,14 @@ func (dbs *BackendDbs) NewGroup(name, description string, card vcard.Card) error
 
 	res := <-ret
 
-	err, ok := res[1].(error)
+	err, ok := res[0].(error)
 	if !ok {
 		return err
 	}
-	return nil
+	return err
 }
 
-func (dbs *BackendDbs) newGroup(name, description string, card vcard.Card) error {
+func (dbs *backendDbs) newGroup(name, description string, card vcard.Card) error {
 
 	res, err := dbs.groups.Exec("INSERT INTO groups(name) VALUES(?);", name)
 	if err != nil {
@@ -465,6 +470,7 @@ func (dbs *BackendDbs) newGroup(name, description string, card vcard.Card) error
 		}
 	}
 
+	slog.Info("Success NEWGROUP added o do db stuff at", "groupname", name)
 	dbs.groupArticles[name] = db
 	dbs.groupArticlesName2Int[name] = groupId
 	dbs.groupArticlesName2Hex[name] = strconv.FormatInt(groupId, 16)
@@ -489,7 +495,7 @@ func (dbs *BackendDbs) GetArticleBySignature(signature string) (*nntp.Article, e
 	return res[0].(*nntp.Article), nil
 }
 
-func (dbs *BackendDbs) getArticleBySignature(signature string) (*nntp.Article, error) {
+func (dbs *backendDbs) getArticleBySignature(signature string) (*nntp.Article, error) {
 
 	message, err := os.ReadFile(dbs.path + "/articles/" + signature)
 	if err != nil {
@@ -531,7 +537,7 @@ func (dbs *BackendDbs) GetArticleById(msgId string) (*nntp.Article, error) {
 	return res[0].(*nntp.Article), nil
 }
 
-func (dbs *BackendDbs) getArticleById(msgId string) (*nntp.Article, error) {
+func (dbs *backendDbs) getArticleById(msgId string) (*nntp.Article, error) {
 
 	slog.Info("GetArticleById", "msgId", msgId)
 	query := ""
@@ -590,12 +596,12 @@ func (dbs *BackendDbs) CancelMessage(from, msgId, newsgroups string, cmf message
 	return nil
 }
 
-func (dbs *BackendDbs) cancelMessage(from, msgId, newsgroups string, cmf messages.ControMesasgeFunctions) error {
+func (dbs *backendDbs) cancelMessage(from, msgId, newsgroups string, cmf messages.ControMesasgeFunctions) error {
 	// get a message by the id
 	// check it's valid
 	// if it is, loop through the newsgroups and delete them from the index
 	// remove the message
-	article, err := dbs.GetArticleById(msgId)
+	article, err := dbs.getArticleById(msgId)
 	if err != nil {
 		slog.Info("CancelMessage [%v] ERROR GetArticleById[%v]", msgId, err)
 		return serr.New(err)
@@ -719,7 +725,7 @@ func (dbs *BackendDbs) ConfigSet(key string, val interface{}) error {
 	return nil
 }
 
-func (dbs *BackendDbs) configSet(key string, val interface{}) error {
+func (dbs *backendDbs) configSet(key string, val interface{}) error {
 	slog.Info("Attempting to uupsert key[%#v] val[%#v]", key, val)
 	if msg, err := dbs.config.Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", key, val); err != nil {
 		slog.Info("FAILED Upserting config value", "path", dbs.path, "error", err, "msg", msg, "query", createArticleIndexDB)
@@ -745,7 +751,7 @@ func (dbs *BackendDbs) ConfigGetInt64(key string) (int64, error) {
 
 	return res[0].(int64), nil
 }
-func (dbs *BackendDbs) configGetInt64(key string) (int64, error) {
+func (dbs *backendDbs) configGetInt64(key string) (int64, error) {
 	rows := dbs.config.QueryRow("SELECT val FROM config WHERE key=?", key)
 	val := int64(0)
 	if err := rows.Scan(&val); err != nil {
@@ -771,7 +777,7 @@ func (dbs *BackendDbs) ConfigGetBytes(key string) ([]byte, error) {
 
 	return res[0].([]byte), nil
 }
-func (dbs *BackendDbs) configGetBytes(key string) ([]byte, error) {
+func (dbs *backendDbs) configGetBytes(key string) ([]byte, error) {
 	rows := dbs.config.QueryRow("SELECT val FROM config WHERE key=?", key)
 	val := []byte{}
 	if err := rows.Scan(&val); err != nil {
@@ -797,7 +803,7 @@ func (dbs *BackendDbs) ConfigGetString(key string) (string, error) {
 
 	return res[0].(string), nil
 }
-func (dbs *BackendDbs) configGetString(key string) (string, error) {
+func (dbs *backendDbs) configGetString(key string) (string, error) {
 	rows := dbs.config.QueryRow("SELECT val FROM config WHERE key=?", key)
 	val := string("")
 	if err := rows.Scan(&val); err != nil {
@@ -821,9 +827,9 @@ func (dbs *BackendDbs) ConfigGetDeviceKey() (keytool.EasyEdKey, error) {
 		return res[0].(keytool.EasyEdKey), err
 	}
 
-	return res[0].(keytool.EasyEdKey), nil
+	return res[0].(keytool.EasyEdKey), err
 }
-func (dbs *BackendDbs) configGetDeviceKey() (keytool.EasyEdKey, error) {
+func (dbs *backendDbs) configGetDeviceKey() (keytool.EasyEdKey, error) {
 	tmpKey, err := dbs.configGetBytes("deviceKey")
 	myKey := keytool.EasyEdKey{}
 	if err != nil {
@@ -850,10 +856,10 @@ func (dbs *BackendDbs) ListGroups(session map[string]string) (<-chan *nntp.Group
 		return res[0].(<-chan *nntp.Group), err
 	}
 
-	return res[0].(<-chan *nntp.Group), nil
+	return res[0].(<-chan *nntp.Group), err
 }
 
-func (dbs *BackendDbs) listGroups(session map[string]string) (<-chan *nntp.Group, error) {
+func (dbs *backendDbs) listGroups(session map[string]string) (<-chan *nntp.Group, error) {
 
 	retChan := make(chan *nntp.Group)
 
@@ -900,7 +906,7 @@ const CmdGetGroup = DatabaseCommand("GetGroup")
 func (dbs *BackendDbs) GetGroup(session map[string]string, groupName string) (*nntp.Group, error) {
 	ret := make(chan []interface{})
 	dbs.Cmd <- DatabaseMessage{
-		Cmd:  CmdListGroups,
+		Cmd:  CmdGetGroup,
 		Args: []interface{}{session, groupName, ret},
 	}
 	res := <-ret
@@ -910,12 +916,12 @@ func (dbs *BackendDbs) GetGroup(session map[string]string, groupName string) (*n
 		return res[0].(*nntp.Group), err
 	}
 
-	return res[0].(*nntp.Group), nil
+	return res[0].(*nntp.Group), err
 }
 
-func (dbs *BackendDbs) getGroup(session map[string]string, groupName string) (*nntp.Group, error) {
+func (dbs *backendDbs) getGroup(session map[string]string, groupName string) (*nntp.Group, error) {
 
-	if perms := dbs.GetPerms(session["Id"], groupName); perms != nil && !perms.Read {
+	if perms := dbs.getPerms(session["Id"], groupName); perms != nil && !perms.Read {
 
 		//	if !be.DBs.GetPerms(session["Id"], groupName).Read {
 		return nil, nntpserver.ErrNoSuchGroup
@@ -990,10 +996,10 @@ func (dbs *BackendDbs) ListArticles(session map[string]string, group string, fro
 		return res[0].(<-chan int64), err
 	}
 
-	return res[0].(<-chan int64), nil
+	return res[0].(<-chan int64), err
 }
 
-func (dbs *BackendDbs) listArticles(session map[string]string, group string, from, to int64) (<-chan int64, error) {
+func (dbs *backendDbs) listArticles(session map[string]string, group string, from, to int64) (<-chan int64, error) {
 
 	retChan := make(chan int64, 10)
 
@@ -1021,7 +1027,7 @@ func (dbs *BackendDbs) listArticles(session map[string]string, group string, fro
 		}
 	}()
 
-	return retChan, nil
+	return retChan, err
 }
 
 const CmdGetGroupNumber = DatabaseCommand("GetGroupNumber")
@@ -1030,7 +1036,7 @@ func (dbs *BackendDbs) GetGroupNumber(group string) (int64, error) {
 
 	ret := make(chan []interface{})
 	dbs.Cmd <- DatabaseMessage{
-		Cmd:  CmdListArticles,
+		Cmd:  CmdGetGroupNumber,
 		Args: []interface{}{group, ret},
 	}
 	res := <-ret
@@ -1040,12 +1046,12 @@ func (dbs *BackendDbs) GetGroupNumber(group string) (int64, error) {
 		return res[0].(int64), err
 	}
 
-	return res[0].(int64), nil
+	return res[0].(int64), err
 }
 
-func (dbs *BackendDbs) getGroupNumber(group string) (int64, error) {
+func (dbs *backendDbs) getGroupNumber(group string) (int64, error) {
 
-	row := dbs.groups.QueryRow("SELECT idF ROM groups WHERE name=?;", group)
+	row := dbs.groups.QueryRow("SELECT id FROM groups WHERE name=?;", group)
 
 	var id int64
 	err := row.Scan(&id)
@@ -1055,7 +1061,7 @@ func (dbs *BackendDbs) getGroupNumber(group string) (int64, error) {
 		return id, err
 	}
 
-	return id, nil
+	return id, err
 }
 
 const CmdStoreArticle = DatabaseCommand("StoreArticle")
@@ -1074,10 +1080,10 @@ func (dbs *BackendDbs) StoreArticle(msg *messages.MessageTool) (int64, error) {
 		return res[0].(int64), err
 	}
 
-	return res[0].(int64), nil
+	return res[0].(int64), err
 }
 
-func (dbs *BackendDbs) storeArticle(msg *messages.MessageTool) (int64, error) {
+func (dbs *backendDbs) storeArticle(msg *messages.MessageTool) (int64, error) {
 
 	article := msg.Article
 
@@ -1128,29 +1134,29 @@ func (dbs *BackendDbs) AddArticleToGroup(group, messageId string, articleId int6
 		return err
 	}
 
-	return nil
+	return err
 }
 
-func (dbs *BackendDbs) addArticleToGroup(group, messageId string, articleId int64) error {
+func (dbs *backendDbs) addArticleToGroup(group, messageId string, articleId int64) error {
 
 	insert := "INSERT INTO articles(id,messageid) VALUES(?,?);"
 
 	_, err := dbs.groupArticles[group].Exec(insert, articleId, messageId)
 	if err != nil {
-		slog.Info("Ouch def Error insert article to do db stuff at", "error", err, "messageId", messageId)
+		slog.Info("Ouch def Error insert article to do db stuff at", "error", err, "group", group, "messageId", messageId)
 		return serr.New(err)
 	} else {
-		slog.Info("SUCCESS  insert article to do db stuff at", "error", err, "messageId", messageId)
+		slog.Info("SUCCESS  insert article to do db stuff at", "error", err, "group", group, "messageId", messageId)
 	}
 
 	row := dbs.articles.QueryRow("UPDATE articles SET refs=refs + 1 WHERE messageid=? RETURNING refs;", messageId)
 	refs := int64(0)
 	err = row.Scan(&refs)
 	if err != nil {
-		slog.Info("Ouch update refs def Error insert article to do db stuff at", "error", err, "messageId", messageId)
+		slog.Info("Ouch update refs def Error insert article to do db stuff at", "error", err, "group", group, "messageId", messageId)
 		return serr.New(err)
 	} else {
-		slog.Info("SUCCESS update refs insert article to do db stuff at", "error", err, "messageId", messageId)
+		slog.Info("SUCCESS update refs insert article to do db stuff at", "error", err, "group", group, "messageId", messageId)
 	}
 	return nil
 }
@@ -1166,14 +1172,16 @@ func (dbs *BackendDbs) AddPeer(peerId string) error {
 	res := <-ret
 
 	err, ok := res[0].(error)
-	if !ok {
+	if ok && err != nil {
+		slog.Info("Add Peer error", "error", err)
 		return err
 	}
 
+	slog.Info("Add Peer not error", "error", err)
 	return nil
 }
 
-func (dbs *BackendDbs) addPeer(peerId string) error {
+func (dbs *backendDbs) addPeer(peerId string) error {
 
 	peerKey := keytool.EasyEdKey{}
 	peerKey.SetTorId(peerId)
@@ -1188,10 +1196,11 @@ func (dbs *BackendDbs) addPeer(peerId string) error {
 
 		return serr.Wrap(fmt.Errorf("Peer already exists %s=%s", "torid", peerId), err)
 	} else {
-		if !errors.Is(err, sql.ErrNoRows) {
+		if err.Error() != sql.ErrNoRows.Error() {
 			return serr.Wrap(fmt.Errorf("Peer Add error %s=%s", "torid", peerId), err)
 		}
 	}
+	slog.Info("ADDING PEER 2", "peerId", peerId, "id", id, "error", err)
 
 	myTorKey, _ := dbs.configGetDeviceKey()
 	myTorId, _ := myTorKey.TorId()
@@ -1207,7 +1216,7 @@ func (dbs *BackendDbs) addPeer(peerId string) error {
 	// NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, db *sql.DB, myKey keytool.EasyEdKey, peerKey keytool.EasyEdKey, dbs BackendDbs) (*Peer, error)
 
 	res, err := dbs.peers.Exec("INSERT INTO peers(torid,pubkey,name) VALUES(?,\"?\",\"\");", peerId, peerPubKey)
-	slog.Info("ERROR ADDPEER INSERT", "error", err, "res", res)
+	slog.Info("INFO  INSERT", "error", err, "res", res)
 	if err != nil {
 		return serr.New(err)
 
@@ -1231,10 +1240,10 @@ func (dbs *BackendDbs) GetPeerList() ([]string, error) {
 		return res[0].([]string), err
 	}
 
-	return res[0].([]string), nil
+	return res[0].([]string), err
 }
 
-func (dbs *BackendDbs) getPeerList() ([]string, error) {
+func (dbs *backendDbs) getPeerList() ([]string, error) {
 
 	ret := []string{}
 	rows, err := dbs.peers.Query("SELECT torid FROM peers;")
@@ -1272,10 +1281,10 @@ func (dbs *BackendDbs) GroupConfigSet(group, key string, val interface{}) error 
 		return err
 	}
 
-	return nil
+	return err
 }
 
-func (dbs *BackendDbs) groupConfigSet(group, key string, val interface{}) error {
+func (dbs *backendDbs) groupConfigSet(group, key string, val interface{}) error {
 	slog.Info("Attempting to uupsert key[%#v] val[%#v]", key, val)
 	if msg, err := dbs.groupArticles[group].Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", key, val); err != nil {
 		slog.Info("FAILED Upserting config value", "path", dbs.path, "error", err, "msg", msg, "query", createArticleIndexDB)
@@ -1299,9 +1308,9 @@ func (dbs *BackendDbs) GroupConfigGetInt64(group, key string) (int64, error) {
 		return res[0].(int64), err
 	}
 
-	return res[0].(int64), nil
+	return res[0].(int64), err
 }
-func (dbs *BackendDbs) groupConfigGetInt64(group, key string) (int64, error) {
+func (dbs *backendDbs) groupConfigGetInt64(group, key string) (int64, error) {
 	row := dbs.groupArticles[group].QueryRow("SELECT val FROM config WHERE key=?", key)
 	val := int64(0)
 	if err := row.Scan(&val); err != nil {
@@ -1325,9 +1334,9 @@ func (dbs *BackendDbs) GroupUpdateSubscriptions(group string, list []string) err
 		return err
 	}
 
-	return nil
+	return err
 }
-func (dbs *BackendDbs) groupUpdateSubscriptions(group string, list []string) error {
+func (dbs *backendDbs) groupUpdateSubscriptions(group string, list []string) error {
 
 	_, err := dbs.groupArticles[group].Exec("DELETE FROM subscriptions;")
 
@@ -1353,14 +1362,16 @@ func (dbs *BackendDbs) GetNextArticle(lastMessage int64) (*nntpserver.NumberedAr
 	}
 	res := <-ret
 
+	slog.Info("the res", "res", res)
+
 	err, ok := res[1].(error)
 	if !ok {
 		return nil, err
 	}
 
-	return res[1].(*nntpserver.NumberedArticle), nil
+	return res[0].(*nntpserver.NumberedArticle), err
 }
-func (dbs *BackendDbs) getNextArticle(lastMessage int64) (*nntpserver.NumberedArticle, error) {
+func (dbs *backendDbs) getNextArticle(lastMessage int64) (*nntpserver.NumberedArticle, error) {
 
 	row := dbs.articles.QueryRow("SELECT id FROM articles WHERE id>? ORDER BY id LIMIT 1", lastMessage)
 	id := int64(0)
@@ -1373,6 +1384,7 @@ func (dbs *BackendDbs) getNextArticle(lastMessage int64) (*nntpserver.NumberedAr
 	if err != nil {
 		return nil, serr.New(err)
 	}
+	slog.Info("the article is:", "article", article)
 	art := &nntpserver.NumberedArticle{
 		Num:     id,
 		Article: article,

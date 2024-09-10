@@ -5,6 +5,7 @@ import (
 	"encoding/base32"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	nntpserver "github.com/kothawoc/go-nntp/server"
 
+	"github.com/kothawoc/kothawoc/internal/databases"
 	"github.com/kothawoc/kothawoc/internal/nntpbackend"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 )
@@ -43,9 +45,15 @@ func main() {
 	log.Printf("Error setting up listener: %v", err)
 	defer l.Close()
 	tc := &torutils.TorCon{}
+	path := "./data/"
+	dbs, err := databases.NewBackendDbs(path)
 
-	nntpBackend, _ := nntpbackend.NewNNTPBackend("./data", tc)
+	if err != nil {
+		slog.Info(" failed to create backend ", "error", err)
+		return
+	}
 
+	nntpBackend, _ := nntpbackend.NewNNTPBackend(path, tc, dbs)
 	s := nntpserver.NewServer(nntpBackend, idGen)
 
 	for {

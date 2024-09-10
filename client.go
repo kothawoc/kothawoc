@@ -1,11 +1,10 @@
 package kothawoc
 
 import (
-	"database/sql"
 	"encoding/base32"
-	"errors"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"math/rand"
 	"net"
@@ -19,6 +18,7 @@ import (
 	"github.com/kothawoc/go-nntp"
 	nntpclient "github.com/kothawoc/go-nntp/client"
 	nntpserver "github.com/kothawoc/go-nntp/server"
+	"github.com/kothawoc/kothawoc/internal/databases"
 	"github.com/kothawoc/kothawoc/internal/nntpbackend"
 	"github.com/kothawoc/kothawoc/internal/torutils"
 	"github.com/kothawoc/kothawoc/pkg/keytool"
@@ -46,43 +46,57 @@ func init() {
 func NewClient(path string, port int) (*Client, error) {
 
 	tc := torutils.NewTorCon(path + "/data")
-	nntpBackend, _ := nntpbackend.NewNNTPBackend(path, tc)
 
-	client := &Client{
-		ConfigPath: path,
-		Tor:        tc,
-		be:         nntpBackend.NextBackend.(*nntpbackend.NntpBackend),
+	os.MkdirAll(fmt.Sprintf("%s/articles", path), 0700)
+	dbs, err := databases.NewBackendDbs(path)
+
+	if err != nil {
+
+		log.Fatal("failed to open dbs")
+		return nil, serr.New(err)
 	}
+	myKey, err := dbs.ConfigGetDeviceKey()
 
-	tmpKey, err := client.ConfigGetGetBytes("deviceKey")
-	myKey := keytool.EasyEdKey{}
-	if errors.Is(err, sql.ErrNoRows) {
-		myKey = client.CreatePrivateKey()
+	slog.Info("getdevkey", "error", err)
+	//tmpKey, err := client.ConfigGetGetBytes("deviceKey")
+	//myKey := keytool.EasyEdKey{}
+	if err != nil {
+		myKey.GenerateKey()
 		pk, _ := myKey.TorPrivKey()
 		//key.
 		deviceKey := []byte(pk)
-		err = client.ConfigSet("deviceKey", deviceKey)
+		err = dbs.ConfigSet("deviceKey", deviceKey)
+
+		slog.Info("Generating Key", "error", err, "devkey", deviceKey)
 		if err != nil {
 			slog.Info("error", "error", err)
 			return nil, serr.New(err)
 		}
 	}
-	if err != nil {
-		slog.Info("error", "error", err)
-		return nil, serr.New(err)
-	}
-
-	//	client.deviceKey = ed25519.PrivateKey(deviceKey)
-	myKey.SetTorPrivateKey(ed25519.PrivateKey(tmpKey))
-	client.deviceKey = myKey
+	//client.deviceKey = myKey
 
 	torId, err := myKey.TorId()
 	if err != nil {
 		return nil, serr.New(err)
 	}
+	//log.Fatal("Started with:", torId, myKey)
 
-	client.deviceId = torId
+	nntpBackend, _ := nntpbackend.NewNNTPBackend(path, tc, dbs)
+
+	client := &Client{
+		ConfigPath: path,
+		Tor:        tc,
+		deviceKey:  myKey,
+		deviceId:   torId,
+		be:         nntpBackend.NextBackend.(*nntpbackend.NntpBackend),
+	}
+
 	idGen.NodeName = client.deviceId
+
+	//	client.deviceKey = ed25519.PrivateKey(deviceKey)
+	//myKey.SetTorPrivateKey(ed25519.PrivateKey(tmpKey))
+
+	slog.Info("STARTING:", "TorId", torId)
 
 	s := nntpserver.NewServer(nntpBackend, idGen)
 

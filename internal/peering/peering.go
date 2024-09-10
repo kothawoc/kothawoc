@@ -239,6 +239,7 @@ func (p *Peer) SendMessages() {
 		return
 	}
 
+	slog.Info("article info", "article", art)
 	msg := messages.NewMessageToolFromArticle(art.Article)
 
 	/*
@@ -431,8 +432,15 @@ func (p *Peers) Worker() {
 				torid := cmd.Args[0].(string)
 				errChan := cmd.Args[1].(chan error)
 
+				myid, _ := p.MyKey.TorId()
+				if torid == myid {
+					errChan <- serr.Errorf("Peer is me myid=%s thier id=%s,", myid, torid)
+					continue
+				}
+
 				err := p.DBs.AddPeer(torid)
-				if err == nil {
+
+				if err != nil {
 					errChan <- serr.Wrap(fmt.Errorf("Peer already exists %s=%s", "torid", torid), err)
 					continue
 				}

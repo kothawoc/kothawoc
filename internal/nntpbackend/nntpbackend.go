@@ -3,7 +3,6 @@ package nntpbackend
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -49,14 +48,7 @@ const (
 	}
 */
 
-func NewNNTPBackend(path string, tc *torutils.TorCon) (*EmptyNntpBackend, error) {
-
-	os.MkdirAll(fmt.Sprintf("%s/articles", path), 0700)
-	dbs, err := databases.NewBackendDbs(path)
-
-	if err != nil {
-		return nil, serr.New(err)
-	}
+func NewNNTPBackend(path string, tc *torutils.TorCon, dbs *databases.BackendDbs) (*EmptyNntpBackend, error) {
 
 	key, _ := dbs.ConfigGetDeviceKey()
 
