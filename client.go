@@ -1,7 +1,6 @@
 package kothawoc
 
 import (
-	"encoding/base32"
 	"fmt"
 	"io"
 	"log"
@@ -213,12 +212,9 @@ type GenIdType struct {
 }
 
 func (i GenIdType) GenID() string {
-	randSpan := make([]byte, 20)
-
-	rand.Read(randSpan)
 	tstr := strings.ToLower(fmt.Sprintf("<%s-%s@%s>",
-		strconv.FormatInt(time.Now().Unix(), 32),
-		base32.StdEncoding.EncodeToString(randSpan),
+		strconv.FormatInt(time.Now().UTC().Unix(), 32),
+		strconv.FormatInt(rand.Int63(), 32),
 		i.NodeName))
 	return tstr
 }

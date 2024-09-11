@@ -194,16 +194,19 @@ func (p *Peer) SendMessages() {
 	lastMessage, err := p.Dbs.GroupConfigGetInt64(p.GroupName, "LastMessage")
 
 	if err != nil {
-		slog.Info("Failed to find last sent message", "sqlErr", err)
+		slog.Info("Failed to find last sent message", "sqlErr", err, "last", lastMessage, "group", p.GroupName)
 		return
 	}
 
 	art, err := p.Dbs.GetNextArticle(lastMessage)
 	if err != nil {
-		slog.Info("Failed to find last sent message", "sqlErr", err)
+		slog.Info("Failed to find last sent message", "sqlErr", err, "last", lastMessage, "group", p.GroupName)
 		return
 	}
 
+	if art == nil {
+		return
+	}
 	slog.Info("article info", "article", art)
 	msg := messages.NewMessageToolFromArticle(art.Article)
 

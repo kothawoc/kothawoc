@@ -7,6 +7,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"log/slog"
 	"math/big"
 	"net"
 	"strings"
@@ -169,6 +170,7 @@ func (e *EasyEdKey) SetTorPrivateKey(pk tor.PrivateKey) {
 func (e *EasyEdKey) SetTorId(id string) error {
 	pubKey, err := torutil.PublicKeyFromV3OnionServiceID(id)
 	if err != nil {
+		slog.Error("bad set torid", "state", ErrInvalidTorId, "error", err)
 		return serr.Wrap(ErrInvalidTorId, err)
 	}
 	e.keyType = KtTorPublicKey

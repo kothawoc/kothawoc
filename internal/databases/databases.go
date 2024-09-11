@@ -114,6 +114,11 @@ func openCreateDB(path, sqlQuery string) (*sql.DB, error) {
 		return nil, serr.New(err)
 	}
 
+	if _, err := db.Exec("PRAGMA journal_mode = WAL;pragma synchronous = normal;pragma temp_store = memory;pragma mmap_size = 30000000000;pragma page_size = 32768;pragma auto_vacuum = incremental;pragma incremental_vacuum;"); err != nil {
+		slog.Info("FAILED PRAGMA journal_mode = WAL;pragma synchronous = normal;pragma temp_store = memory;pragma mmap_size = 30000000000;pragma page_size = 32768;pragma auto_vacuum = incremental;pragma incremental_vacuum;", "error", err, "path", path)
+		return nil, serr.New(err)
+	}
+
 	return db, nil
 }
 
@@ -327,9 +332,15 @@ func (dbs *backendDbs) openGroups() error {
 			return serr.New(err)
 		}
 
-		db, err := sql.Open("sqlite3", fmt.Sprintf("%s/groups/%x.db", dbs.path, id))
+		path := fmt.Sprintf("%s/groups/%x.db", dbs.path, id)
+		db, err := sql.Open("sqlite3", path)
 		if err != nil {
 			slog.Info("Error OpenGroup o do db stuff at]", "db", db, "error", err)
+			return serr.New(err)
+		}
+
+		if _, err := db.Exec("PRAGMA journal_mode = WAL;pragma synchronous = normal;pragma temp_store = memory;pragma mmap_size = 30000000000;pragma page_size = 32768;pragma auto_vacuum = incremental;pragma incremental_vacuum;"); err != nil {
+			slog.Info("FAILED PRAGMA journal_mode = WAL;pragma synchronous = normal;pragma temp_store = memory;pragma mmap_size = 30000000000;pragma page_size = 32768;pragma auto_vacuum = incremental;pragma incremental_vacuum;", "error", err, "path", path)
 			return serr.New(err)
 		}
 
@@ -1194,10 +1205,10 @@ func (dbs *backendDbs) addPeer(peerId string) error {
 	slog.Info("ADDING PEER", "peerId", peerId, "id", id, "error", err)
 	if err == nil {
 
-		return serr.Wrap(fmt.Errorf("Peer already exists %s=%s", "torid", peerId), err)
+		return serr.Wrap(fmt.Errorf("peer already exists %s=%s", "torid", peerId), err)
 	} else {
 		if err.Error() != sql.ErrNoRows.Error() {
-			return serr.Wrap(fmt.Errorf("Peer Add error %s=%s", "torid", peerId), err)
+			return serr.Wrap(fmt.Errorf("peer add error %s=%s", "torid", peerId), err)
 		}
 	}
 	slog.Info("ADDING PEER 2", "peerId", peerId, "id", id, "error", err)
@@ -1205,21 +1216,33 @@ func (dbs *backendDbs) addPeer(peerId string) error {
 	myTorKey, _ := dbs.configGetDeviceKey()
 	myTorId, _ := myTorKey.TorId()
 	gDB := dbs.groupArticles[myTorId+".peers."+peerId]
-	query := "UPDATE OR INSERT config(key,val) VALUES(?,?) WHERE key=?;"
-	gDB.Exec(query, "ControlMessages", "true")
-	gDB.Exec(query, "Feed", peerId)
-	gDB.Exec(query, "LastMessage", 0)
+	query := "INSERT OR IGNORE INTO config(key,val) VALUES(?,?); UPDATE config SET val=? WHERE key=?;"
+	res, err := gDB.Exec(query, "ControlMessages", "true", "true", "ControlMessages")
+	if err != nil {
+		slog.Error("cm", "peerid", peerId, "id", id, "error", err, "res", res)
+		return serr.New(err)
+	}
+	res, err = gDB.Exec(query, "Feed", peerId, peerId, "Feed")
+	if err != nil {
+		slog.Error("cm", "peerid", peerId, "id", id, "error", err, "res", res)
+		return serr.New(err)
+	}
+	res, err = gDB.Exec(query, "LastMessage", 0, 0, "LastMessage")
+	if err != nil {
+		slog.Error("cm", "peerid", peerId, "id", id, "error", err, "res", res)
+		return serr.New(err)
+	}
 
 	slog.Info("Adding peer", "id", id, "torid", peerId, "pubkey", pubkey, "name", name)
 
-	peerPubKey, _ := peerKey.PubKey()
+	peerPubKey, _ := peerKey.TorPubKey()
 	// NewPeer(tc *torutils.TorCon, parent chan PeeringMessage, db *sql.DB, myKey keytool.EasyEdKey, peerKey keytool.EasyEdKey, dbs BackendDbs) (*Peer, error)
 
-	res, err := dbs.peers.Exec("INSERT INTO peers(torid,pubkey,name) VALUES(?,\"?\",\"\");", peerId, peerPubKey)
-	slog.Info("INFO  INSERT", "error", err, "res", res)
+	res, err = dbs.peers.Exec("INSERT INTO peers(torid,pubkey,name) VALUES(?,?,\"\");", peerId, []byte(peerPubKey))
+	slog.Info("INFO  INSERT", "error", err, "res", res, "pubKey", []byte(peerPubKey))
 	if err != nil {
+		slog.Info("cm", "peerid", peerId, "id", id, "error", err, "res", res)
 		return serr.New(err)
-
 	}
 
 	return nil
@@ -1304,6 +1327,7 @@ func (dbs *BackendDbs) GroupConfigGetInt64(group, key string) (int64, error) {
 	res := <-ret
 
 	err, ok := res[1].(error)
+	slog.Info("GroupGetConfig", "int64", res[0].(int64), "err", err)
 	if !ok {
 		return res[0].(int64), err
 	}
