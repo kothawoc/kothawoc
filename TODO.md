@@ -17,7 +17,7 @@
 - [x] Control message;- Add peer.
 - [x] Control message;- Remove peer.
 - [x] Peering.
-- [ ] Path header.
+- [\] Path header.
 
 ## Stage 2
 
@@ -25,11 +25,11 @@
 - [?] Support Distribution header (and require it for security, really?).
 - [ ] Support Expires header (and require it for control messages).
 - [ ] Support Supersedes header.
-- [ ] Control message;- Subscribe to peer's group.
+- [\] Control message;- Subscribe to peer's group.
 - [x] Control message;- Cancel /delete message.
 - [x] Control message;- Add group identity/vcard.
-- [ ] Control message;- Delete group.
-- [ ] Control message;- Unsubscribe from peer's group.
+- [\] Control message;- Delete group.
+- [\] Control message;- Unsubscribe from peer's group.
 
 
 ## Extra Ideas
