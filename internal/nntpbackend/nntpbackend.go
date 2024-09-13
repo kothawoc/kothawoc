@@ -85,7 +85,7 @@ type NntpBackend struct {
 
 func (be *NntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group, error) {
 
-	slog.Info("E ListGroups")
+	slog.Debug("E ListGroups")
 
 	a, b := be.DBs.ListGroups(session)
 
@@ -94,7 +94,7 @@ func (be *NntpBackend) ListGroups(session map[string]string) (<-chan *nntp.Group
 }
 
 func (be *NntpBackend) GetGroup(session map[string]string, groupName string) (*nntp.Group, error) {
-	slog.Info("E GetGroup", "id", session["Id"])
+	slog.Debug("E GetGroup", "id", session["Id"])
 
 	if perms := be.DBs.GetPerms(session["Id"], groupName); perms != nil && !perms.Read {
 
@@ -110,7 +110,7 @@ func (be *NntpBackend) GetGroup(session map[string]string, groupName string) (*n
 
 func (be *NntpBackend) GetArticleWithNoGroup(session map[string]string, id string) (*nntp.Article, error) {
 
-	slog.Info("E GetArticleWithNoGroup")
+	slog.Debug("E GetArticleWithNoGroup")
 
 	ret, err := be.DBs.GetArticleById(id)
 
@@ -124,7 +124,7 @@ TODO: Check security and if the user is allowed to view the groups
 */
 func (be *NntpBackend) GetArticle(session map[string]string, group *nntp.Group, grpMsgId string) (*nntp.Article, error) {
 
-	slog.Info("GetArticle", "group", group, "grpMsgId", grpMsgId)
+	slog.Debug("GetArticle", "group", group, "grpMsgId", grpMsgId)
 
 	if !be.DBs.GetPerms(session["Id"], group.Name).Read {
 		return nil, nntpserver.ErrInvalidArticleNumber
@@ -138,7 +138,7 @@ func (be *NntpBackend) GetArticle(session map[string]string, group *nntp.Group, 
 
 func (be *NntpBackend) GetArticles(session map[string]string, group *nntp.Group, from, to int64) (<-chan nntpserver.NumberedArticle, error) {
 
-	slog.Info("E GetArticles")
+	slog.Debug("E GetArticles")
 	if perms := be.DBs.GetPerms(session["Id"], group.Name); perms != nil && !perms.Read {
 		//if !be.DBs.GetPerms(session["Id"], group.Name).Read {
 		return nil, nntpserver.ErrInvalidArticleNumber
@@ -152,7 +152,7 @@ func (be *NntpBackend) GetArticles(session map[string]string, group *nntp.Group,
 		for id := range list {
 			//		err := row.Scan(&id)
 
-			slog.Info("Get Articles Scan", "id", id)
+			slog.Debug("Get Articles Scan", "id", id)
 			if err != nil {
 				return // nil, err
 			}
@@ -200,13 +200,14 @@ func (be *NntpBackend) Post(session map[string]string, article *nntp.Article) er
 		sig := msg.Article.Header.Get(messages.SignatureHeader)
 		if sig == "" {
 			slog.Info("Signing new posted message")
-			deviceKey, _ := be.DBs.ConfigGetBytes("deviceKey")
+			//deviceKey, _ := be.DBs.ConfigGetBytes("deviceKey")
 			if msg.Article.Header.Get("Date") == "" {
 				msg.Article.Header.Set("Date", time.Now().UTC().Format(time.RFC1123Z))
 			}
 
-			kt := keytool.EasyEdKey{}
-			kt.SetTorPrivateKey(ed25519.PrivateKey(deviceKey))
+			//kt := keytool.EasyEdKey{}
+			kt, _ := be.DBs.ConfigGetDeviceKey()
+			//kt.SetTorPrivateKey(ed25519.PrivateKey(deviceKey))
 
 			msg.Sign(kt)
 		}

@@ -174,7 +174,7 @@ type DatabaseMessage struct {
 func (dbs *backendDbs) dbServer() error {
 	for {
 		cmd := <-dbs.Cmd
-		slog.Info("DB SERVER", "cmd", cmd.Cmd, "args", cmd.Args)
+		//	slog.Info("DB SERVER", "cmd", cmd.Cmd, "args", cmd.Args)
 		switch cmd.Cmd {
 		case CmdGetPerms: // Args: []interface{}{torid, group, ret},
 			ret := cmd.Args[2].(chan []interface{})
@@ -304,7 +304,7 @@ func (dbs *backendDbs) dbServer() error {
 		case CmdGetNextArticle: // Args: []interface{}{lastMessage, ret},
 			ret := cmd.Args[1].(chan []interface{})
 			a, b := dbs.getNextArticle(cmd.Args[0].(int64))
-			slog.Info("next art", "a", a, "b", b)
+			slog.Debug("next art", "a", a, "b", b)
 			ret <- []interface{}{a, b}
 			close(ret)
 
@@ -370,13 +370,13 @@ func (dbs *BackendDbs) GetPerms(torid, group string) *PermissionsGroupT {
 }
 
 func (dbs *backendDbs) getPerms(torid, group string) *PermissionsGroupT {
-	slog.Info("E GetPerms", "torid", torid, "group", group)
+	//slog.Info("E GetPerms", "torid", torid, "group", group)
 
 	p := &PermissionsGroupT{}
 
 	gs := strings.Split(group, ".")[0]
 	if gs == torid {
-		slog.Info("E GetPerms HERE BE GOD", "torid", torid, "group", group)
+		slog.Debug("E GetPerms HERE BE GOD", "torid", torid, "group", group)
 		return &PermissionsGroupT{
 			Read:      true,
 			Reply:     true,
@@ -401,12 +401,14 @@ func (dbs *backendDbs) getPerms(torid, group string) *PermissionsGroupT {
 
 	err = row.Scan(&p.Read, &p.Reply, &p.Post, &p.Cancel, &p.Supersede)
 	if err != nil && err == sql.ErrNoRows {
-		slog.Info("E GetPerms fail get other siht", "torid", torid, "group", group, "error", err)
+		slog.Debug("getPerms", "torid", torid, "group", group, "error", err)
 		row = dbs.groupArticles[group].QueryRow("SELECT read,reply,post,cancel,supersede FROM perms WHERE torid=?;", "group")
 		err = row.Scan(&p.Read, &p.Reply, &p.Post, &p.Cancel, &p.Supersede)
 		if err == nil {
+			slog.Debug("getPerms", "torid", torid, "group", group, "error", err)
 			return p
 		}
+		slog.Error("getPerms no perms found for group", "torid", torid, "group", group, "error", err)
 		return nil
 	}
 
@@ -476,12 +478,12 @@ func (dbs *backendDbs) newGroup(name, description string, card vcard.Card) error
 		supersede := v.Params.Get("SUPERSEDE") == "true"
 
 		if msg, err := db.Exec("INSERT OR REPLACE INTO perms (torid,read,reply,post,cancel,supersede) VALUES (?,?,?,?,?,?)", torid, read, reply, post, cancel, supersede); err != nil {
-			slog.Info("FAILED Upserting group config value", "name", name, "description", description, "error", err, "msh", msg)
+			slog.Error("FAILED Upserting group config value", "name", name, "description", description, "error", err, "msh", msg)
 			return serr.New(err)
 		}
 	}
 
-	slog.Info("Success NEWGROUP added o do db stuff at", "groupname", name)
+	slog.Debug("Success NEWGROUP added o do db stuff at", "groupname", name)
 	dbs.groupArticles[name] = db
 	dbs.groupArticlesName2Int[name] = groupId
 	dbs.groupArticlesName2Hex[name] = strconv.FormatInt(groupId, 16)
@@ -510,13 +512,13 @@ func (dbs *backendDbs) getArticleBySignature(signature string) (*nntp.Article, e
 
 	message, err := os.ReadFile(dbs.path + "/articles/" + signature)
 	if err != nil {
-		slog.Info("GetArticleBySignature", "signature", signature, "error", err)
+		slog.Error("GetArticleBySignature", "signature", signature, "error", err)
 		return nil, serr.New(err)
 	}
 	body := (strings.SplitN(string(message), "\r\n\r\n", 2))[1]
 	msg, err := mail.ReadMessage(bytes.NewReader(message))
 	if err != nil {
-		slog.Info("GetArticleBySignature", "signature", signature, "error", err)
+		slog.Error("GetArticleBySignature", "signature", signature, "error", err)
 		return nil, serr.New(err)
 	}
 
@@ -550,7 +552,7 @@ func (dbs *BackendDbs) GetArticleById(msgId string) (*nntp.Article, error) {
 
 func (dbs *backendDbs) getArticleById(msgId string) (*nntp.Article, error) {
 
-	slog.Info("GetArticleById", "msgId", msgId)
+	slog.Debug("GetArticleById", "msgId", msgId)
 	query := ""
 	// if the id is an int, get the message id
 	if _, err := strconv.ParseInt(msgId, 10, 64); err == nil {
@@ -565,17 +567,17 @@ func (dbs *backendDbs) getArticleById(msgId string) (*nntp.Article, error) {
 	signature := ""
 	err := row.Scan(&id, &messageid, &signature)
 	if err != nil {
-		slog.Info("GetArticleById Failed to open article final row scan", "msgId", msgId, "error", err)
+		slog.Error("GetArticleById Failed to open article final row scan", "msgId", msgId, "error", err)
 		return nil, serr.New(nntpserver.ErrInvalidArticleNumber)
 	}
 
 	article, err := dbs.getArticleBySignature(signature)
 	if err != nil {
-		slog.Info("GetArticleById Failed to get article by signature", "msgId", msgId, "signature", signature, "error", err)
+		slog.Error("GetArticleById Failed to get article by signature", "msgId", msgId, "signature", signature, "error", err)
 		return nil, serr.New(nntpserver.ErrInvalidArticleNumber)
 	}
 
-	slog.Info("GetArticle By Id return", "article", article, "error", err)
+	slog.Debug("GetArticle By Id return", "article", article, "error", err)
 
 	return article, nil
 }
@@ -884,13 +886,14 @@ func (dbs *backendDbs) listGroups(session map[string]string) (<-chan *nntp.Group
 		for row.Next() {
 			err := row.Scan(&id, &name)
 
-			slog.Info("Get grouplist", "id", id, "name", name)
+			slog.Debug("Get grouplist", "id", id, "name", name)
 			if err != nil {
-				slog.Info("Error in grouplist", "error", err)
+				slog.Error("Error in grouplist", "error", err)
 				return
 			}
 			if perms := dbs.getPerms(session["Id"], name); perms != nil && !perms.Read {
 				//	if !be.DBs.GetPerms(session["Id"], name).Read {
+				slog.Error("Error in grouplist", "error", err)
 				continue
 			}
 
@@ -983,11 +986,11 @@ func (dbs *backendDbs) getGroup(session map[string]string, groupName string) (*n
 			Posting:     posting,
 		}
 
-		slog.Info("E GetGroup returning", "ret", ret)
+		slog.Debug("E GetGroup returning", "ret", ret)
 		return ret, nil
 	}
 
-	slog.Info("E GetGroup not found", "groupName", groupName, "groupdb", dbs.groupArticles)
+	slog.Error("E GetGroup not found", "groupName", groupName, "groupdb", dbs.groupArticles)
 	return nil, nntpserver.ErrNoSuchGroup
 }
 
@@ -1308,9 +1311,9 @@ func (dbs *BackendDbs) GroupConfigSet(group, key string, val interface{}) error 
 }
 
 func (dbs *backendDbs) groupConfigSet(group, key string, val interface{}) error {
-	slog.Info("Attempting to uupsert key[%#v] val[%#v]", key, val)
+	slog.Debug("Attempting to uupsert key[%#v] val[%#v]", key, val)
 	if msg, err := dbs.groupArticles[group].Exec("INSERT OR REPLACE INTO config (key, val) VALUES (?, ?)", key, val); err != nil {
-		slog.Info("FAILED Upserting config value", "path", dbs.path, "error", err, "msg", msg, "query", createArticleIndexDB)
+		slog.Error("FAILED Upserting config value", "path", dbs.path, "error", err, "msg", msg, "query", createArticleIndexDB)
 		return serr.New(err)
 	}
 	return nil
@@ -1327,7 +1330,7 @@ func (dbs *BackendDbs) GroupConfigGetInt64(group, key string) (int64, error) {
 	res := <-ret
 
 	err, ok := res[1].(error)
-	slog.Info("GroupGetConfig", "int64", res[0].(int64), "err", err)
+	slog.Debug("GroupGetConfig", "int64", res[0].(int64), "err", err)
 	if !ok {
 		return res[0].(int64), err
 	}
@@ -1386,10 +1389,10 @@ func (dbs *BackendDbs) GetNextArticle(lastMessage int64) (*nntpserver.NumberedAr
 	}
 	res := <-ret
 
-	slog.Info("the res", "res", res)
+	slog.Debug("the res", "res", res)
 
 	err, ok := res[1].(error)
-	if !ok {
+	if ok {
 		return nil, err
 	}
 
@@ -1401,14 +1404,16 @@ func (dbs *backendDbs) getNextArticle(lastMessage int64) (*nntpserver.NumberedAr
 	id := int64(0)
 	err := row.Scan(&id)
 	if err != nil {
+		slog.Error("getNextArticle scan", "num", lastMessage, "error", err)
 		return nil, serr.New(err)
 	}
 
 	article, err := dbs.getArticleById(fmt.Sprintf("%d", id))
 	if err != nil {
+		slog.Error("getNextArticle readfile", "num", lastMessage, "article", article, "error", err)
 		return nil, serr.New(err)
 	}
-	slog.Info("the article is:", "article", article)
+	slog.Info("getNextArticle", "num", lastMessage, "article", article)
 	art := &nntpserver.NumberedArticle{
 		Num:     id,
 		Article: article,

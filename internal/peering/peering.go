@@ -96,15 +96,16 @@ func (p *Peer) Worker() {
 
 	//gDB := p.Dbs.GroupArticles[p.GroupName]
 
-	for {
-		select {
-		case cmd := <-p.Cmd:
+	for cmd := range p.Cmd {
+		go func(cmd PeeringMessage) {
 			//log.Printf("Spam Command Loop: [%#v]", cmd)
 			switch cmd.Cmd {
 			case CmdConnect:
 				p.Connect()
 
 			case CmdDistribute:
+				return
+				//continue
 				msg := cmd.Args[0].(messages.MessageTool)
 				// TODO: filter mail to see if we should actually post it?
 				if p.Client != nil {
@@ -178,7 +179,7 @@ func (p *Peer) Worker() {
 			//switch cmd {
 			//case "Connect":
 			//}
-		}
+		}(cmd)
 		p.Connect()
 		p.SendMessages()
 
@@ -194,17 +195,18 @@ func (p *Peer) SendMessages() {
 	lastMessage, err := p.Dbs.GroupConfigGetInt64(p.GroupName, "LastMessage")
 
 	if err != nil {
-		slog.Info("Failed to find last sent message", "sqlErr", err, "last", lastMessage, "group", p.GroupName)
+		slog.Error("Failed to find last sent message", "sqlErr", err, "last", lastMessage, "group", p.GroupName)
 		return
 	}
 
 	art, err := p.Dbs.GetNextArticle(lastMessage)
 	if err != nil {
-		slog.Info("Failed to find last sent message", "sqlErr", err, "last", lastMessage, "group", p.GroupName)
+		slog.Error("Failed to find last sent message", "sqlErr", err, "last", lastMessage, "group", p.GroupName)
 		return
 	}
 
 	if art == nil {
+		slog.Error("FAILED article info", "article", art)
 		return
 	}
 	slog.Info("article info", "article", art)
@@ -213,6 +215,12 @@ func (p *Peer) SendMessages() {
 	splitPath := strings.Split(msg.Article.Header.Get("Path"), "!")
 	for _, pathHost := range splitPath {
 		if p.PeerTorId == pathHost {
+			slog.Info("Peer already received", "article", art)
+			err := p.Dbs.GroupConfigSet(p.GroupName, "LastMessage", art.Num)
+			if err != nil {
+				slog.Error("Failed to update LastMessage for skip", "sqlErr", err, "LastMessage", art.Num)
+				return
+			}
 			return
 		}
 	}
@@ -230,9 +238,10 @@ func (p *Peer) SendMessages() {
 	if notAllowed {
 		err := p.Dbs.GroupConfigSet(p.GroupName, "LastMessage", art.Num)
 		if err != nil {
-			slog.Info("Failed to find last sent message", "sqlErr", err)
+			slog.Error("Failed to update LastMessage for skip", "sqlErr", err, "LastMessage", art.Num)
 			return
 		}
+		slog.Info("Failed to update LastMessage for skip", "LastMessage", art.Num)
 		return
 	}
 
@@ -241,12 +250,17 @@ func (p *Peer) SendMessages() {
 	err = p.Client.Post(strings.NewReader(msg.RawMail()))
 
 	if err != nil {
-		slog.Info("Failed to find last sent message", "sqlErr", err)
+		slog.Info("Failed to post LastMessage for skip", "LastMessage", art.Num, "error", err)
+		err := p.Dbs.GroupConfigSet(p.GroupName, "LastMessage", art.Num)
+		if err != nil {
+			slog.Error("Failed to update LastMessage for skip", "sqlErr", err, "LastMessage", art.Num)
+			return
+		}
 		return
 	} else {
 		err := p.Dbs.GroupConfigSet(p.GroupName, "LastMessage", art.Num)
 		if err != nil {
-			slog.Info("Failed to find last sent message", "sqlErr", err)
+			slog.Error("Failed to update LastMessage for skip", "sqlErr", err, "LastMessage", art.Num)
 			return
 		}
 	}

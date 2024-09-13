@@ -178,6 +178,8 @@ func (m *MessageTool) writeRaw(signing bool) string {
 		}
 	}
 	fmt.Fprintf(&buf, "\r\n")
+	m.Preamble = strings.Replace(string(m.Preamble), "\r", "", -1)
+	m.Preamble = strings.Replace(string(m.Preamble), "\n", "\r\n", -1)
 	fmt.Fprintf(&buf, m.Preamble)
 	if len(m.Parts) > 1 {
 		fmt.Fprintf(&buf, "\r\n")
@@ -206,7 +208,7 @@ func (m *MessageTool) ParseBody() {
 	_, params, err := mime.ParseMediaType(m.Article.Header.Get("Content-Type"))
 	if err == nil {
 		hasMime = true
-		slog.Info("have mime")
+		slog.Debug("have mime")
 	}
 
 	// Read the preamble manually

@@ -84,7 +84,7 @@ func CheckControl(msg *MessageTool, cmf ControMesasgeFunctions, session map[stri
 
 			return serr.New(cmf.Cancel(msg.Article.Header.Get("From"), splitCtl[1], msg.Article.Header.Get("Newsgroups"), cmf))
 
-		case "newsgroup": // RFC 5537 - 5.2.1. The newgroup Control Message
+		case "newgroup": // RFC 5537 - 5.2.1. The newgroup Control Message
 			// TODO: LOLz people can create any newsgroup name they wish, so long as it's
 			// one "word", lile "<ID>.Y0URMØ7#3r.w0z.ar.#4m$t3r!.`/tmp/andnoexploitsfoundhere`.fun"
 			splitGroup := strings.Split(splitCtl[1], ".")
@@ -216,7 +216,7 @@ func CreateNewsGroupMail(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, 
 		},
 		{
 			Header:  textproto.MIMEHeader{"Content-Type": []string{"text/plain;charset=UTF-8"}},
-			Content: []byte("This is a system control message to create the newsgroup " + ownerID + "." + name + ".\r\n"),
+			Content: []byte("This is a system control message to create the news group " + ownerID + "." + name + ".\r\n"),
 		},
 	}
 	if card != nil {
@@ -238,8 +238,8 @@ func CreateNewsGroupMail(myKey keytool.EasyEdKey, idgen nntpserver.IdGenerator, 
 	return (&MessageTool{
 		Article: &nntp.Article{
 			Header: textproto.MIMEHeader{
-				"Subject":                   {"cmsg newsgroup " + ownerID + "." + name + modStr},
-				"Control":                   {"newsgroup " + ownerID + "." + name + modStr},
+				"Subject":                   {"cmsg newgroup " + ownerID + "." + name + modStr},
+				"Control":                   {"newgroup " + ownerID + "." + name + modStr},
 				"Message-Id":                {idgen.GenID()},
 				"Date":                      {time.Now().UTC().Format(time.RFC1123Z)},
 				"Newsgroups":                {ownerID + "." + name},
